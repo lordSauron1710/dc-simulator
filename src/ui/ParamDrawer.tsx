@@ -43,8 +43,8 @@ export function ParamDrawer({
 
   return (
     <div className={`param-drawer ${isOpen ? "open" : "closed"}`}>
-      <div className="param-drawer-header" onClick={onToggle}>
-        <span className="param-drawer-title">Parameters</span>
+      <div className="param-drawer-header section-header" onClick={onToggle}>
+        <span>PARAMETERS</span>
         <svg
           width="12"
           height="12"
@@ -139,6 +139,7 @@ export function ParamDrawer({
             min={1.05}
             max={2.0}
             step={0.05}
+            formatValue={(v) => v.toFixed(2)}
             onChange={handleSliderChange("pue")}
           />
 

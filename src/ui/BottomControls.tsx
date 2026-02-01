@@ -17,7 +17,7 @@ export function BottomControls({
   onResetCamera,
 }: BottomControlsProps) {
   return (
-    <nav className="controls-bottom">
+    <nav className="controls-bottom" aria-label="View and camera controls">
       <IconButton
         title="Orbit Mode"
         isActive={viewMode === "orbit"}

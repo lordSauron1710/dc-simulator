@@ -137,16 +137,28 @@ body {
   padding: var(--space-sm);
 }
 
-.drawer-left {
-  pointer-events: auto;
+/* Left column: unified sidebar with Explorer + Parameters */
+.panel-left {
   grid-column: 1;
-  grid-row: 1;
-  background: var(--bg-canvas);
-  border-right: 1px solid #000;
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
-  margin: -8px 0 0 -8px;
-  padding-top: 8px;
+  align-items: stretch;
+  width: 240px;
+  margin-left: -8px;
+  padding-bottom: var(--space-lg);
+  overflow-y: auto;
+  background-color: var(--bg-panel);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.drawer-left {
+  pointer-events: auto;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .section-header {
@@ -216,12 +228,21 @@ body {
   opacity: 0.7;
 }
 
+/* Right column: spec panel + bottom controls stack */
+.panel-right {
+  grid-column: 3;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-top: var(--space-sm);
+  padding-bottom: var(--space-sm);
+}
+
 .panel-specs {
   pointer-events: auto;
-  grid-column: 3;
-  grid-row: 1;
-  margin-top: var(--space-sm);
-  align-self: start;
+  flex-shrink: 0;
   background-color: var(--bg-panel-glass);
   backdrop-filter: blur(16px);
   border-radius: var(--radius-lg);
@@ -231,7 +252,6 @@ body {
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.08);
   width: 260px;
-  justify-self: end;
 }
 
 .panel-section {
@@ -337,15 +357,14 @@ body {
 
 .controls-bottom {
   pointer-events: auto;
-  grid-column: 3;
-  grid-row: 2;
-  justify-self: end;
-  margin-bottom: var(--space-lg);
+  flex-shrink: 0;
+  width: 260px;
   background-color: var(--bg-panel-glass);
   backdrop-filter: blur(16px);
   border-radius: var(--radius-lg);
   padding: 4px;
   display: flex;
+  align-items: center;
   gap: 2px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
@@ -415,17 +434,13 @@ body {
 /* Parameter Drawer */
 .param-drawer {
   pointer-events: auto;
-  grid-column: 1;
-  grid-row: 2;
-  align-self: end;
-  background-color: var(--bg-panel-glass);
-  backdrop-filter: blur(16px);
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: none;
-  margin: 0 0 var(--space-lg) -8px;
-  width: 240px;
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: var(--space-xs);
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
   transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -445,6 +460,11 @@ body {
   padding: var(--space-md);
   cursor: pointer;
   user-select: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.param-drawer.closed .param-drawer-header {
+  border-bottom: none;
 }
 
 .param-drawer-header:hover {

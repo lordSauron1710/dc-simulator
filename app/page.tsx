@@ -32,29 +32,22 @@ export default function SandboxPage() {
       <Viewport />
 
       <div className="ui-layer">
-        <ExplorerTree
-          selection={state.selection}
-          onSelect={(id, type) => select({ id, type })}
-        />
-
-        <ParamDrawer
-          params={state.params}
-          isOpen={state.ui.drawerOpen}
-          onToggle={toggleDrawer}
-          onParamsChange={updateParams}
-        />
+        <div className="panel-left">
+          <ExplorerTree
+            selection={state.selection}
+            onSelect={(id, type) => select({ id, type })}
+          />
+          <ParamDrawer
+            params={state.params}
+            isOpen={state.ui.drawerOpen}
+            onToggle={toggleDrawer}
+            onParamsChange={updateParams}
+          />
+        </div>
 
         <div />
 
-        <div
-          style={{
-            gridColumn: "3",
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            justifyContent: "space-between",
-          }}
-        >
+        <div className="panel-right">
           <SpecsPanel
             selection={state.selection}
             properties={properties}

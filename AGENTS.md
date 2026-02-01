@@ -59,6 +59,38 @@ Use this stack as the default. If you introduce a new dependency or pattern, doc
 
 ---
 
+## Deployability (Vercel, Netlify, Cloud Run)
+
+The app must remain deployable to Vercel, Netlify, or Cloud Run. Design and architecture choices should support this.
+
+**Build & run**
+
+- Use standard commands: `npm run build`, `npm run start`. Avoid custom build steps that require host-specific setup.
+- Keep the build output compatible with static export where possible (`output: 'export'` in `next.config.js` if applicable), or ensure standard Node.js server mode works on all targets.
+
+**Dependencies & runtime**
+
+- Avoid native binaries, server-side file I/O for user data, or long-lived processes that assume a single server instance.
+- Use client-side state (React context, localStorage, URL) for UI state; avoid server-side sessions or persistent storage that requires a database unless explicitly required.
+- Prefer edge-compatible APIs: no Node-only modules in client bundles; keep server logic minimal.
+
+**Environment**
+
+- All config via env vars (e.g. `NEXT_PUBLIC_*` for client, `NODE_ENV` for build). Document required vars in README.
+- No hardcoded API URLs, keys, or region-specific endpoints. Use env-based configuration.
+
+**Architecture**
+
+- Frontend-first: the app should work as a static or hybrid Next.js app that can be deployed with a single build artifact.
+- If adding backend routes or API routes, keep them stateless and idempotent; avoid reliance on local filesystem or host-specific features.
+
+**Before introducing new patterns**
+
+- Verify `npm run build` succeeds and the app runs with `npm run start`.
+- Confirm the chosen pattern is supported on Vercel, Netlify, and Cloud Run (or document any host-specific requirements).
+
+---
+
 ## Key files
 
 | File | Purpose |
@@ -140,6 +172,7 @@ Implement a global store with:
 - **Goal:** Visually creative, deployable 3D data center webapp.
 - **Mindset:** Senior dev — simple, typed, user- and deployment-aware.
 - **Stack:** Next.js 14, TypeScript (strict), React, CSS variables, Three.js (planned).
+- **Deployability:** Design for Vercel, Netlify, and Cloud Run — static/hybrid build, env-based config, no host-specific assumptions.
 - **Key files:** roadmap.md (prompts), README.md (docs), errors.md (lessons).
 - **Errors:** Check errors.md when stuck; add entries when fixing bugs; re-read relevant sections before changing critical flows.
 - **Roadmap:** Use status tags (`IN PROGRESS` / `EXECUTED`) in roadmap.md and keep prompt text unchanged.

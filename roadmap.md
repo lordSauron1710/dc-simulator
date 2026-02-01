@@ -27,6 +27,7 @@ Set up a Next.js + TypeScript app with a single route `/` hosting the sandbox. A
 ---
 
 ## Prompt 02 — UI shell cloned from reference (no 3D yet)
+<!-- EXECUTED -->
 
 **Prompt**  
 Recreate the UI shell to match the in-repo reference (`src/ui/`, `app/globals.css`): dark canvas, left explorer, top-right glass spec panel, bottom-right control pills. Use shared CSS variables.

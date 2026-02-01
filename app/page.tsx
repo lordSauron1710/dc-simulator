@@ -6,10 +6,11 @@ import { ExplorerTree } from "@/ui/ExplorerTree";
 import { SpecsPanel } from "@/ui/SpecsPanel";
 import type { PropertiesState, SpecificationsState } from "@/ui/SpecsPanel";
 import { BottomControls } from "@/ui/BottomControls";
+import { ParamDrawer } from "@/ui/ParamDrawer";
 import { useStore } from "@/state";
 
 export default function SandboxPage() {
-  const { state, select, setViewMode } = useStore();
+  const { state, select, setViewMode, updateParams, toggleDrawer } = useStore();
 
   const [properties, setProperties] = React.useState<PropertiesState>({
     x: "1240",
@@ -34,6 +35,13 @@ export default function SandboxPage() {
         <ExplorerTree
           selection={state.selection}
           onSelect={(id, type) => select({ id, type })}
+        />
+
+        <ParamDrawer
+          params={state.params}
+          isOpen={state.ui.drawerOpen}
+          onToggle={toggleDrawer}
+          onParamsChange={updateParams}
         />
 
         <div />

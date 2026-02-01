@@ -69,6 +69,23 @@ Use this stack as the default. If you introduce a new dependency or pattern, doc
 
 ---
 
+## Keeping README.md up to date
+
+The README is the public face of this project. Keep it current:
+
+**Screenshots**
+
+- After any **major UI update** (new panel, significant visual change, layout restructure), add a screenshot to `docs/screenshots/` and update the screenshot at the top of README.md.
+- Name screenshots descriptively: `ui-param-drawer.png`, `3d-rack-layout.png`, etc.
+- Keep one hero screenshot at the top; archive older ones in `docs/screenshots/archive/` if needed.
+
+**File structure**
+
+- After any **major file structure change** (new folders, significant reorganisation), update the project structure section in README.md.
+- Include only meaningful files/folders; omit generated files, lock files, and trivial items.
+
+---
+
 ## Learning from errors
 
 Use **errors.md** to learn from past mistakes and avoid repeating them.
@@ -126,3 +143,4 @@ Implement a global store with:
 - **Key files:** roadmap.md (prompts), README.md (docs), errors.md (lessons).
 - **Errors:** Check errors.md when stuck; add entries when fixing bugs; re-read relevant sections before changing critical flows.
 - **Roadmap:** Use status tags (`IN PROGRESS` / `EXECUTED`) in roadmap.md and keep prompt text unchanged.
+- **Documentation:** After major UI changes, add screenshots to `docs/screenshots/` and update README. After file structure changes, update README.

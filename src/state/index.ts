@@ -23,8 +23,8 @@ export type {
   ViewMode,
   UIState,
   Redundancy,
-  Cooling,
-  Containment,
+  CoolingType,
+  ContainmentType,
 } from "./types";
 export {
   DEFAULT_STATE,

@@ -53,9 +53,9 @@ export function SpecsPanel({
           </span>
         </div>
         <div className="control-row" style={{ marginBottom: 0 }}>
-          <span className="text-label">Params (store)</span>
+          <span className="text-label">Facility</span>
           <span style={{ fontFamily: "monospace", fontSize: "10px" }}>
-            {params.itLoadMW} MW · PUE {params.pue} · {params.halls} halls
+            {params.criticalLoadMW} MW · PUE {params.pue} · {params.dataHalls} halls
           </span>
         </div>
       </div>

@@ -63,6 +63,7 @@ Implement a global store with:
 ---
 
 ## Prompt 04 — Parameter drawer
+<!-- EXECUTED -->
 
 **Prompt**  
 Create a collapsible parameter drawer with sliders and dropdowns for all inputs.

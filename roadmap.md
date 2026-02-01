@@ -43,6 +43,7 @@ Recreate the UI shell to match the in-repo reference (`src/ui/`, `app/globals.cs
 ---
 
 ## Prompt 03 — Global state store
+<!-- EXECUTED -->
 
 **Prompt**  
 Implement a global store with:

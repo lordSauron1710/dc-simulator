@@ -3,6 +3,8 @@
 import React from "react";
 import { InputField } from "./InputField";
 import { Dropdown } from "./Dropdown";
+import { useStore } from "@/state";
+import type { Selection } from "@/state";
 
 export interface PropertiesState {
   x: string;
@@ -19,6 +21,7 @@ export interface SpecificationsState {
 }
 
 export interface SpecsPanelProps {
+  selection?: Selection;
   properties: PropertiesState;
   onPropertiesChange: (properties: PropertiesState) => void;
   specifications: SpecificationsState;
@@ -26,13 +29,36 @@ export interface SpecsPanelProps {
 }
 
 export function SpecsPanel({
+  selection: selectionProp,
   properties,
   onPropertiesChange,
   specifications,
   onSpecificationsChange,
 }: SpecsPanelProps) {
+  const { state } = useStore();
+  const selection = selectionProp ?? state.selection;
+  const { params } = state;
+
+  const selectionLabel =
+    selection?.type && selection?.id
+      ? `${selection.type.charAt(0).toUpperCase() + selection.type.slice(1)} ${selection.id}`
+      : null;
+
   return (
     <aside className="panel-specs">
+      <div className="panel-section" style={{ paddingBottom: selectionLabel ? 0 : undefined }}>
+        <div className="panel-title">
+          <span style={{ fontSize: "10px", color: "var(--text-secondary)" }}>
+            {selectionLabel ? `Selected: ${selectionLabel}` : "Selection"}
+          </span>
+        </div>
+        <div className="control-row" style={{ marginBottom: 0 }}>
+          <span className="text-label">Params (store)</span>
+          <span style={{ fontFamily: "monospace", fontSize: "10px" }}>
+            {params.itLoadMW} MW · PUE {params.pue} · {params.halls} halls
+          </span>
+        </div>
+      </div>
       <div className="panel-section">
         <div className="panel-title">
           <span>Properties</span>

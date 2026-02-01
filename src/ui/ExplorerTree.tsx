@@ -2,16 +2,19 @@
 
 import React from "react";
 import { TreeItem } from "./TreeItem";
+import type { Selection } from "@/state";
 
 export interface ExplorerTreeProps {
-  activeRackId?: string;
-  onSelect?: (id: string) => void;
+  selection: Selection;
+  onSelect?: (id: string, type: Selection["type"]) => void;
 }
 
 export function ExplorerTree({
-  activeRackId = "R-104",
+  selection,
   onSelect,
 }: ExplorerTreeProps) {
+  const activeId = selection.id;
+
   return (
     <aside className="drawer-left">
       <div className="section-header">EXPLORER</div>
@@ -44,8 +47,8 @@ export function ExplorerTree({
         icon="🔌"
         level={3}
         hasChildren
-        isActive={activeRackId === "R-104"}
-        onClick={() => onSelect?.("R-104")}
+        isActive={activeId === "R-104"}
+        onClick={() => onSelect?.("R-104", "rack")}
       />
 
       <TreeItem
@@ -53,8 +56,8 @@ export function ExplorerTree({
         icon="🔌"
         level={3}
         hasChildren
-        isActive={activeRackId === "R-105"}
-        onClick={() => onSelect?.("R-105")}
+        isActive={activeId === "R-105"}
+        onClick={() => onSelect?.("R-105", "rack")}
       />
     </aside>
   );

@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { Viewport } from "@/scene/Viewport";
 import { ExplorerTree } from "@/ui/ExplorerTree";
 import { SpecsPanel } from "@/ui/SpecsPanel";
 import type { PropertiesState, SpecificationsState } from "@/ui/SpecsPanel";
 import { BottomControls } from "@/ui/BottomControls";
-import type { ViewMode } from "@/ui/BottomControls";
+import { useStore } from "@/state";
 
 export default function SandboxPage() {
-  const [properties, setProperties] = useState<PropertiesState>({
+  const { state, select, setViewMode } = useStore();
+
+  const [properties, setProperties] = React.useState<PropertiesState>({
     x: "1240",
     y: "840",
     w: "600",
@@ -18,13 +20,11 @@ export default function SandboxPage() {
     r: "0",
   });
 
-  const [specifications, setSpecifications] = useState<SpecificationsState>({
-    model: "Blade Server X2",
-    power: "2.4 kW",
-  });
-
-  const [viewMode, setViewMode] = useState<ViewMode>("orbit");
-  const [activeRackId, setActiveRackId] = useState("R-104");
+  const [specifications, setSpecifications] =
+    React.useState<SpecificationsState>({
+      model: "Blade Server X2",
+      power: "2.4 kW",
+    });
 
   return (
     <>
@@ -32,8 +32,8 @@ export default function SandboxPage() {
 
       <div className="ui-layer">
         <ExplorerTree
-          activeRackId={activeRackId}
-          onSelect={setActiveRackId}
+          selection={state.selection}
+          onSelect={(id, type) => select({ id, type })}
         />
 
         <div />
@@ -48,6 +48,7 @@ export default function SandboxPage() {
           }}
         >
           <SpecsPanel
+            selection={state.selection}
             properties={properties}
             onPropertiesChange={setProperties}
             specifications={specifications}
@@ -55,7 +56,7 @@ export default function SandboxPage() {
           />
 
           <BottomControls
-            viewMode={viewMode}
+            viewMode={state.viewMode}
             onViewModeChange={setViewMode}
             onResetCamera={() => {}}
           />

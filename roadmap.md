@@ -162,6 +162,7 @@ Add containment walls, cable trays, and power routing lines.
 ---
 
 ## Prompt 10 — Cooling + heat overlay
+<!-- EXECUTED -->
 
 **Prompt**  
 Add a thermal overlay driven by rack density and cooling mode.
@@ -177,6 +178,7 @@ Add a thermal overlay driven by rack density and cooling mode.
 ---
 
 ## Prompt 11 — Scroll-driven camera tour
+<!-- IN PROGRESS -->
 
 **Prompt**  
 Implement a scroll-based camera walkthrough with multiple focus sections.

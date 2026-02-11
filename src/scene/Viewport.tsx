@@ -9,6 +9,7 @@ import type { Params } from "@/state/types";
 const MAX_PIXEL_RATIO = 2;
 const FOOT_TO_WORLD = 0.115;
 const FLOOR_SIZE = 280;
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 const PARAM_RANGES = {
   criticalLoadMW: { min: 0.5, max: 1000 },
@@ -116,6 +117,19 @@ interface SceneScale {
   hallCellDepthFt: number;
   hallWidthFt: number;
   hallDepthFt: number;
+}
+
+interface CameraTourSection {
+  direction: THREE.Vector3;
+  distanceScale: number;
+  lookOffset: THREE.Vector3;
+}
+
+interface CameraTourLayout {
+  center: THREE.Vector3;
+  radius: number;
+  fitDistance: number;
+  sections: CameraTourSection[];
 }
 
 function disposeMaterial(material?: THREE.Material | THREE.Material[]): void {
@@ -1010,6 +1024,15 @@ export function Viewport() {
     const palette = getCoolingPalette(params.coolingType);
     const containment = getContainmentGeometry(params.containment, params.coolingType);
     const efficiencyAccent = blendHex(0x22d3ee, 0xf97316, pueNorm);
+    const thermalCoolColor =
+      params.coolingType === "DLC"
+        ? blendHex(palette.flowLiquid, palette.containmentCold, 0.3)
+        : params.coolingType === "Hybrid"
+          ? blendHex(palette.flowAir, palette.flowLiquid, 0.42)
+          : blendHex(palette.flowAir, palette.containmentCold, 0.2);
+    const thermalHotColor = blendHex(palette.containmentHot, 0xef4444, 0.45);
+    const thermalSuppression =
+      params.coolingType === "Air-Cooled" ? 1 : params.coolingType === "Hybrid" ? 0.74 : 0.5;
 
     const buildingWidthFt = scale.buildingWidthFt;
     const buildingDepthFt = scale.buildingDepthFt;
@@ -1301,6 +1324,154 @@ export function Viewport() {
           rackOrdinal += 1;
         }
       });
+
+      const thermalBase = clamp01(
+        densityNorm * 0.58 +
+          utilization * 0.42 +
+          scale.loadPressure * 0.16
+      );
+      const thermalIntensity = clamp01(
+        thermalBase * thermalSuppression + pueNorm * 0.08
+      );
+      const thermalPlaneCount =
+        params.coolingType === "Air-Cooled"
+          ? hallsNorm > 0.7
+            ? 2
+            : 3
+          : params.coolingType === "Hybrid"
+            ? 2
+            : 1;
+
+      for (let layerIndex = 0; layerIndex < thermalPlaneCount; layerIndex += 1) {
+        const layerT =
+          thermalPlaneCount <= 1 ? 0.5 : layerIndex / (thermalPlaneCount - 1);
+        const planeWidth = hallWidth * lerp(0.58, 0.86, thermalIntensity) * (1 - layerT * 0.12);
+        const planeDepth = hallDepth * lerp(0.62, 0.92, thermalIntensity) * (1 - layerT * 0.12);
+        const layerColor = blendHex(
+          thermalCoolColor,
+          thermalHotColor,
+          clamp01(thermalIntensity * (0.72 + layerT * 0.38))
+        );
+        const thermalPlane = new THREE.Mesh(
+          new THREE.PlaneGeometry(planeWidth, planeDepth),
+          new THREE.MeshStandardMaterial({
+            color: layerColor,
+            emissive: tintHex(layerColor, -0.2),
+            emissiveIntensity: 0.2 + thermalIntensity * 0.16,
+            roughness: 0.52,
+            metalness: 0.06,
+            transparent: true,
+            opacity:
+              (params.coolingType === "DLC" ? 0.2 : params.coolingType === "Hybrid" ? 0.24 : 0.3) +
+              thermalIntensity * 0.18 -
+              layerT * 0.06,
+            side: THREE.DoubleSide,
+          })
+        );
+        thermalPlane.rotation.x = -Math.PI / 2;
+        thermalPlane.position.set(
+          x,
+          rackY +
+            rackHeight * (0.45 + layerT * 0.22) +
+            worldFromFeet(0.35 + layerT * 0.35),
+          z
+        );
+        layoutGroup.add(thermalPlane);
+        hallInteractionTargets.push(thermalPlane);
+      }
+
+      const airIndicatorCount =
+        params.coolingType === "Air-Cooled"
+          ? hallsNorm > 0.7
+            ? 2
+            : 3
+          : params.coolingType === "Hybrid"
+            ? 2
+            : 0;
+      for (let indicatorIndex = 0; indicatorIndex < airIndicatorCount; indicatorIndex += 1) {
+        const indicatorSpread =
+          airIndicatorCount <= 1
+            ? 0
+            : -0.26 + (indicatorIndex / (airIndicatorCount - 1)) * 0.52;
+        const indicatorHeight = hallHeight * lerp(0.16, 0.3, thermalIntensity);
+        const airColumn = new THREE.Mesh(
+          new THREE.CylinderGeometry(
+            worldFromFeet(0.14),
+            worldFromFeet(0.18),
+            indicatorHeight,
+            8
+          ),
+          new THREE.MeshStandardMaterial({
+            color: blendHex(palette.flowAir, thermalHotColor, 0.26),
+            emissive: tintHex(palette.flowAir, -0.18),
+            emissiveIntensity: 0.22,
+            roughness: 0.34,
+            metalness: 0.2,
+            transparent: true,
+            opacity: params.coolingType === "Air-Cooled" ? 0.38 : 0.28,
+          })
+        );
+        const airColumnX = x + hallWidth * indicatorSpread;
+        const airColumnZ = z + (indicatorIndex % 2 === 0 ? -hallDepth * 0.14 : hallDepth * 0.14);
+        airColumn.position.set(
+          airColumnX,
+          rackY + rackHeight * 0.8 + indicatorHeight / 2,
+          airColumnZ
+        );
+        layoutGroup.add(airColumn);
+        hallInteractionTargets.push(airColumn);
+
+        const airTip = new THREE.Mesh(
+          new THREE.ConeGeometry(worldFromFeet(0.26), worldFromFeet(0.56), 8),
+          new THREE.MeshStandardMaterial({
+            color: blendHex(palette.flowAir, 0xffffff, 0.24),
+            emissive: tintHex(palette.flowAir, -0.16),
+            emissiveIntensity: 0.18,
+            roughness: 0.36,
+            metalness: 0.16,
+            transparent: true,
+            opacity: params.coolingType === "Air-Cooled" ? 0.42 : 0.3,
+          })
+        );
+        airTip.position.set(
+          airColumnX,
+          airColumn.position.y + indicatorHeight / 2 + worldFromFeet(0.28),
+          airColumnZ
+        );
+        layoutGroup.add(airTip);
+        hallInteractionTargets.push(airTip);
+      }
+
+      const liquidIndicatorCount =
+        params.coolingType === "DLC"
+          ? hallsNorm > 0.7
+            ? 2
+            : 3
+          : params.coolingType === "Hybrid"
+            ? 2
+            : 0;
+      for (let indicatorIndex = 0; indicatorIndex < liquidIndicatorCount; indicatorIndex += 1) {
+        const zOffset =
+          liquidIndicatorCount <= 1
+            ? 0
+            : -hallDepth * 0.24 +
+              (indicatorIndex / (liquidIndicatorCount - 1)) * hallDepth * 0.48;
+        const ribbon = new THREE.Mesh(
+          new THREE.BoxGeometry(hallWidth * 0.72, worldFromFeet(0.18), worldFromFeet(0.34)),
+          new THREE.MeshStandardMaterial({
+            color: palette.flowLiquid,
+            emissive: tintHex(palette.flowLiquid, -0.12),
+            emissiveIntensity: 0.24,
+            roughness: 0.3,
+            metalness: 0.26,
+            transparent: true,
+            opacity: params.coolingType === "DLC" ? 0.46 : 0.34,
+          })
+        );
+        ribbon.position.set(x - hallWidth * 0.03, rackY + rackHeight * 0.42, z + zOffset);
+        layoutGroup.add(ribbon);
+        hallInteractionTargets.push(ribbon);
+      }
 
       const traySpine = new THREE.Mesh(
         new THREE.BoxGeometry(trayWidth, trayThickness, hallDepth * 0.9),

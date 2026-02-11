@@ -2,12 +2,12 @@
 
 Parameter-driven data center visualization sandbox with a Next.js dashboard, typed global state, and an interactive viewport.
 
-> **Current state:** Prompts 01-08 in `roadmap.md` are executed (project scaffold, UI shell, global store, parameter drawer, data model, Three.js foundation, hall geometry, procedural instanced racks).
+> **Current state:** Prompts 01-09 in `roadmap.md` are executed (project scaffold, UI shell, global store, parameter drawer, data model, Three.js foundation, hall geometry, procedural instanced racks, systems overlays).
 
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
-[![Roadmap](https://img.shields.io/badge/Roadmap-01--08%20executed-blue)](roadmap.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-01--09%20executed-blue)](roadmap.md)
 
 ![DC Simulator UI](docs/screenshots/dc-simulator-ui.png)
 
@@ -25,7 +25,7 @@ Parameter-driven data center visualization sandbox with a Next.js dashboard, typ
 Next.js App Router page (/)
   -> StoreProvider (typed app state)
   -> ExplorerTree + ParamDrawer + SpecsPanel + BottomControls
-  -> Viewport (Three.js procedural building, halls, and instanced racks)
+  -> Viewport (Three.js procedural building, halls, instanced racks, and systems overlays)
 ```
 
 ## Repository subway map
@@ -157,8 +157,8 @@ No project-specific environment variables are currently required.
 
 ## Roadmap status
 
-- Executed: Prompts 01-08.
-- Pending: Prompts 09-15 (systems overlays, thermal overlay, camera tour, controls, performance pass, polish).
+- Executed: Prompts 01-09.
+- Pending: Prompts 10-15 (thermal overlay, camera tour, controls, performance pass, polish).
 
 ## License
 

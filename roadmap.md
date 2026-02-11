@@ -146,6 +146,7 @@ Generate racks using instancing. Lay out rows and aisles per hall.
 ---
 
 ## Prompt 09 — Systems overlays
+<!-- EXECUTED -->
 
 **Prompt**  
 Add containment walls, cable trays, and power routing lines.

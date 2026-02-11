@@ -362,6 +362,27 @@ function createPipeSegment(
   return mesh;
 }
 
+function createRoutingLine(
+  points: THREE.Vector3[],
+  color: number,
+  opacity: number
+): THREE.Line | null {
+  if (points.length < 2) {
+    return null;
+  }
+
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(points),
+    new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+    })
+  );
+
+  return line;
+}
+
 function makeEntityKey(type: InteractiveKind, id: string): string {
   return `${type}:${id}`;
 }
@@ -1132,6 +1153,7 @@ export function Viewport() {
     const entities: InteractiveEntity[] = [];
     const hallAirTapPoints: Array<{ point: THREE.Vector3; entityKey: string }> = [];
     const hallLiquidTapPoints: Array<{ point: THREE.Vector3; entityKey: string }> = [];
+    const hallPowerTapPoints: Array<{ point: THREE.Vector3; entityKey: string; hallIndex: number }> = [];
     const registerEntity = (entity: InteractiveEntity, targets: THREE.Object3D[]) => {
       entities.push(entity);
       entityByKeyRef.current.set(entity.key, entity);
@@ -1141,6 +1163,11 @@ export function Viewport() {
         objectToEntityKeyRef.current.set(target.uuid, entity.key);
       });
     };
+
+    const trayColor = blendHex(0x64748b, palette.shellEdge, lerp(0.18, 0.44, pueNorm));
+    const trayThickness = Math.max(worldFromFeet(0.24), hallHeight * 0.024);
+    const trayWidth = Math.max(worldFromFeet(0.72), hallWidth * 0.052);
+    const trayY = hallY + hallHeight * 0.43;
 
     const rackBaseColorHex = blendHex(0x334155, palette.hallEdge, lerp(0.24, 0.52, densityNorm));
     const rackProfile: RackColorProfile = {
@@ -1190,6 +1217,7 @@ export function Viewport() {
       const hallEntityKey = makeEntityKey("hall", hallId);
       const airTapPoint = new THREE.Vector3(x, hallY + hallHeight * 0.36, z);
       const liquidTapPoint = new THREE.Vector3(x - hallWidth * 0.42, hallY + hallHeight * 0.22, z);
+      const powerTapPoint = new THREE.Vector3(x + hallWidth * 0.36, hallY + hallHeight * 0.3, z);
       const hallInteractionTargets: THREE.Object3D[] = [];
 
       const hallBaseColor = blendHex(palette.hall, efficiencyAccent, lerp(0.06, 0.22, pueNorm));
@@ -1274,6 +1302,47 @@ export function Viewport() {
         }
       });
 
+      const traySpine = new THREE.Mesh(
+        new THREE.BoxGeometry(trayWidth, trayThickness, hallDepth * 0.9),
+        new THREE.MeshStandardMaterial({
+          color: trayColor,
+          emissive: tintHex(trayColor, -0.2),
+          emissiveIntensity: 0.12,
+          roughness: 0.42,
+          metalness: 0.32,
+          transparent: true,
+          opacity: 0.74,
+        })
+      );
+      traySpine.position.set(x - hallWidth * 0.34, trayY, z);
+      layoutGroup.add(traySpine);
+      hallInteractionTargets.push(traySpine);
+
+      const trayBranchCount = Math.max(1, Math.min(4, rowCount));
+      for (let branchIndex = 0; branchIndex < trayBranchCount; branchIndex += 1) {
+        const branchZ =
+          z -
+          hallDepth * 0.36 +
+          (trayBranchCount <= 1
+            ? hallDepth * 0.36
+            : (branchIndex / (trayBranchCount - 1)) * hallDepth * 0.72);
+        const trayBranch = new THREE.Mesh(
+          new THREE.BoxGeometry(hallWidth * 0.68, trayThickness * 0.88, trayWidth * 0.78),
+          new THREE.MeshStandardMaterial({
+            color: blendHex(trayColor, palette.shellEdge, 0.16),
+            emissive: tintHex(trayColor, -0.24),
+            emissiveIntensity: 0.1,
+            roughness: 0.44,
+            metalness: 0.3,
+            transparent: true,
+            opacity: 0.68,
+          })
+        );
+        trayBranch.position.set(x - hallWidth * 0.04, trayY, branchZ);
+        layoutGroup.add(trayBranch);
+        hallInteractionTargets.push(trayBranch);
+      }
+
       if (params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid") {
         const ductCount = params.coolingType === "Air-Cooled" ? 2 : 1;
         for (let ductIndex = 0; ductIndex < ductCount; ductIndex += 1) {
@@ -1315,9 +1384,14 @@ export function Viewport() {
         hallInteractionTargets.push(manifold);
       }
 
+      const containmentWallThickness = Math.max(worldFromFeet(0.3), hallWidth * 0.015);
+      const containmentWallHeight = containment.fullEnclosure ? hallHeight * 0.78 : hallHeight * 0.54;
+      const containmentWallY = baseY + worldFromFeet(0.4) + containmentWallHeight / 2;
+
       if (containment.hotLane) {
+        const hotLaneWidth = hallWidth * 0.16;
         const hotLane = new THREE.Mesh(
-          new THREE.BoxGeometry(hallWidth * 0.16, hallHeight * 0.05, hallDepth * 0.9),
+          new THREE.BoxGeometry(hotLaneWidth, hallHeight * 0.05, hallDepth * 0.9),
           new THREE.MeshStandardMaterial({
             color: palette.containmentHot,
             emissive: tintHex(palette.containmentHot, -0.22),
@@ -1331,13 +1405,36 @@ export function Viewport() {
         hotLane.position.set(x, baseY + hallHeight * 0.06, z);
         layoutGroup.add(hotLane);
         hallInteractionTargets.push(hotLane);
+
+        for (const direction of [-1, 1]) {
+          const hotWall = new THREE.Mesh(
+            new THREE.BoxGeometry(containmentWallThickness, containmentWallHeight, hallDepth * 0.9),
+            new THREE.MeshStandardMaterial({
+              color: blendHex(palette.containmentHot, 0xffffff, 0.08),
+              emissive: tintHex(palette.containmentHot, -0.24),
+              emissiveIntensity: 0.2,
+              roughness: 0.38,
+              metalness: 0.16,
+              transparent: true,
+              opacity: 0.34,
+            })
+          );
+          hotWall.position.set(
+            x + direction * hotLaneWidth * 0.5,
+            containmentWallY,
+            z
+          );
+          layoutGroup.add(hotWall);
+          hallInteractionTargets.push(hotWall);
+        }
       }
 
       if (containment.coldLane) {
         const laneOffset = hallWidth * 0.28;
+        const coldLaneWidth = hallWidth * 0.1;
         for (const direction of [-1, 1]) {
           const coldLane = new THREE.Mesh(
-            new THREE.BoxGeometry(hallWidth * 0.1, hallHeight * 0.04, hallDepth * 0.9),
+            new THREE.BoxGeometry(coldLaneWidth, hallHeight * 0.04, hallDepth * 0.9),
             new THREE.MeshStandardMaterial({
               color: palette.containmentCold,
               emissive: tintHex(palette.containmentCold, -0.2),
@@ -1351,6 +1448,28 @@ export function Viewport() {
           coldLane.position.set(x + laneOffset * direction, baseY + hallHeight * 0.05, z);
           layoutGroup.add(coldLane);
           hallInteractionTargets.push(coldLane);
+
+          for (const wallSide of [-1, 1]) {
+            const coldWall = new THREE.Mesh(
+              new THREE.BoxGeometry(containmentWallThickness, containmentWallHeight * 0.92, hallDepth * 0.9),
+              new THREE.MeshStandardMaterial({
+                color: blendHex(palette.containmentCold, 0xffffff, 0.1),
+                emissive: tintHex(palette.containmentCold, -0.24),
+                emissiveIntensity: 0.18,
+                roughness: 0.38,
+                metalness: 0.14,
+                transparent: true,
+                opacity: 0.3,
+              })
+            );
+            coldWall.position.set(
+              x + laneOffset * direction + wallSide * coldLaneWidth * 0.5,
+              containmentWallY,
+              z
+            );
+            layoutGroup.add(coldWall);
+            hallInteractionTargets.push(coldWall);
+          }
         }
       }
 
@@ -1371,6 +1490,54 @@ export function Viewport() {
         cap.position.set(x, hallY + hallHeight / 2 - capHeight / 2, z);
         layoutGroup.add(cap);
         hallInteractionTargets.push(cap);
+
+        const enclosureWallOpacity = 0.28;
+        const enclosureWallDepth = hallDepth * 0.98;
+        const enclosureWallWidth = hallWidth * 0.98;
+
+        for (const direction of [-1, 1]) {
+          const sideWall = new THREE.Mesh(
+            new THREE.BoxGeometry(containmentWallThickness, hallHeight * 0.78, enclosureWallDepth),
+            new THREE.MeshStandardMaterial({
+              color: blendHex(palette.containmentCold, 0xffffff, 0.15),
+              emissive: tintHex(palette.containmentCold, -0.22),
+              emissiveIntensity: 0.2,
+              roughness: 0.36,
+              metalness: 0.16,
+              transparent: true,
+              opacity: enclosureWallOpacity,
+            })
+          );
+          sideWall.position.set(
+            x + direction * enclosureWallWidth * 0.5,
+            baseY + hallHeight * 0.41,
+            z
+          );
+          layoutGroup.add(sideWall);
+          hallInteractionTargets.push(sideWall);
+        }
+
+        for (const direction of [-1, 1]) {
+          const frontBackWall = new THREE.Mesh(
+            new THREE.BoxGeometry(enclosureWallWidth, hallHeight * 0.78, containmentWallThickness),
+            new THREE.MeshStandardMaterial({
+              color: blendHex(palette.containmentCold, 0xffffff, 0.12),
+              emissive: tintHex(palette.containmentCold, -0.22),
+              emissiveIntensity: 0.2,
+              roughness: 0.36,
+              metalness: 0.16,
+              transparent: true,
+              opacity: enclosureWallOpacity,
+            })
+          );
+          frontBackWall.position.set(
+            x,
+            baseY + hallHeight * 0.41,
+            z + direction * enclosureWallDepth * 0.5
+          );
+          layoutGroup.add(frontBackWall);
+          hallInteractionTargets.push(frontBackWall);
+        }
       }
 
       const hallProfile = createVisualProfile(hallBaseColor, hallBaseOpacity, hallBaseEmissive);
@@ -1385,7 +1552,35 @@ export function Viewport() {
       registerEntity(entity, hallInteractionTargets);
       hallAirTapPoints.push({ point: airTapPoint, entityKey: hallEntityKey });
       hallLiquidTapPoints.push({ point: liquidTapPoint, entityKey: hallEntityKey });
+      hallPowerTapPoints.push({
+        point: powerTapPoint,
+        entityKey: hallEntityKey,
+        hallIndex: hall.hallIndex,
+      });
     });
+
+    const trayTrunkSpan = hallFieldDepth + hallDepth * 0.62;
+    for (const direction of [-1, 1]) {
+      const trayTrunk = new THREE.Mesh(
+        new THREE.BoxGeometry(trayWidth * 1.12, trayThickness * 1.04, trayTrunkSpan),
+        new THREE.MeshStandardMaterial({
+          color: blendHex(trayColor, palette.shellEdge, 0.2),
+          emissive: tintHex(trayColor, -0.18),
+          emissiveIntensity: 0.12,
+          roughness: 0.42,
+          metalness: 0.34,
+          transparent: true,
+          opacity: 0.72,
+        })
+      );
+      trayTrunk.position.set(
+        direction * (hallFieldWidth / 2 + hallWidth * 0.38),
+        trayY,
+        0
+      );
+      layoutGroup.add(trayTrunk);
+      buildingInteractionTargets.push(trayTrunk);
+    }
 
     rackMesh.count = rackCursor;
     rackMesh.instanceMatrix.needsUpdate = true;
@@ -1634,6 +1829,7 @@ export function Viewport() {
     const utilityWidth = worldFromFeet(lerp(9, 20, criticalNorm));
     const utilityDepth = worldFromFeet(lerp(8, 16, pueNorm));
     const pathColor = blendHex(redundancy.color, palette.shellEdge, 0.2);
+    const powerModuleAnchors: THREE.Vector3[] = [];
 
     redundancy.modulePositions.forEach((position) => {
       const moduleX = worldFromFeet(position.x);
@@ -1654,6 +1850,8 @@ export function Viewport() {
       module.position.set(moduleX, baseY + utilityHeight / 2, moduleZ);
       layoutGroup.add(module);
       buildingInteractionTargets.push(module);
+
+      powerModuleAnchors.push(new THREE.Vector3(moduleX, baseY + utilityHeight * 0.88, moduleZ));
 
       const target = new THREE.Vector3(
         Math.sign(position.x) * worldFromFeet(Math.max(2, buildingWidthFt * 0.18)),
@@ -1690,6 +1888,73 @@ export function Viewport() {
         );
         layoutGroup.add(backupPath);
         buildingInteractionTargets.push(backupPath);
+      }
+    });
+
+    const overheadBusY = hallY + hallHeight * 0.46;
+    const powerCorridorX = hallFieldWidth / 2 + hallWidth * 0.56;
+    const powerRoutePrimaryColor = blendHex(redundancy.color, 0xffffff, 0.12);
+    const powerRouteSecondaryColor = tintHex(powerRoutePrimaryColor, 0.2);
+
+    const addPowerRoute = (
+      from: THREE.Vector3,
+      to: THREE.Vector3,
+      color: number,
+      opacity: number,
+      entityKey: string
+    ) => {
+      const corridorX = to.x >= 0 ? powerCorridorX : -powerCorridorX;
+      const line = createRoutingLine(
+        [
+          from,
+          new THREE.Vector3(from.x, overheadBusY, from.z),
+          new THREE.Vector3(corridorX, overheadBusY, from.z),
+          new THREE.Vector3(corridorX, overheadBusY, to.z),
+          new THREE.Vector3(to.x, overheadBusY, to.z),
+          to,
+        ],
+        color,
+        opacity
+      );
+
+      if (!line) {
+        return;
+      }
+
+      layoutGroup.add(line);
+      raycastTargetsRef.current.push(line);
+      objectToEntityKeyRef.current.set(line.uuid, entityKey);
+    };
+
+    const selectNearestAnchors = (target: THREE.Vector3) =>
+      powerModuleAnchors
+        .slice()
+        .sort(
+          (left, right) =>
+            left.distanceToSquared(target) - right.distanceToSquared(target)
+        );
+
+    hallPowerTapPoints.forEach(({ point: tapPoint, entityKey, hallIndex }) => {
+      if (powerModuleAnchors.length === 0) {
+        return;
+      }
+
+      const nearestAnchors = selectNearestAnchors(tapPoint);
+      const primaryAnchor = nearestAnchors[0];
+      const secondaryAnchor =
+        nearestAnchors[1] ?? nearestAnchors[0];
+
+      addPowerRoute(primaryAnchor, tapPoint, powerRoutePrimaryColor, 0.7, entityKey);
+
+      if (params.redundancy === "N+1") {
+        const plusOneAnchor = nearestAnchors[Math.min(2, nearestAnchors.length - 1)] ?? secondaryAnchor;
+        if (hallIndex % 2 === 0 || hallPowerTapPoints.length <= 3) {
+          addPowerRoute(plusOneAnchor, tapPoint, powerRouteSecondaryColor, 0.5, entityKey);
+        }
+      }
+
+      if (params.redundancy === "2N") {
+        addPowerRoute(secondaryAnchor, tapPoint, powerRouteSecondaryColor, 0.58, entityKey);
       }
     });
 

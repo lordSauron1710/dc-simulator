@@ -130,6 +130,7 @@ Generate translucent building shell and internal halls from the model.
 ---
 
 ## Prompt 08 — Procedural racks (InstancedMesh)
+<!-- EXECUTED -->
 
 **Prompt**  
 Generate racks using instancing. Lay out rows and aisles per hall.

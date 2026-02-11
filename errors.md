@@ -93,7 +93,12 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 
 *Next.js build, `npm run dev`/`build`/`start`, hosting, env vars.*
 
-*(No entries yet.)*
+### [Dev server crashed with missing chunk module `./819.js`]
+
+- **Symptom:** `next dev` returned a server error: `Cannot find module './819.js'` with a require stack through `.next/server/webpack-runtime.js` and `.next/server/pages/_document.js`.
+- **Root cause:** The `.next` directory contained a mixed artifact state (dev runtime files with stale production `app/page.js` chunk references), typically after interrupted/restarted dev sessions while previous build output remained.
+- **Fix:** Stop the running dev server, remove `.next`, and restart with `npm run dev` so all server/runtime chunks are regenerated consistently.
+- **Lesson:** For unexplained Next.js chunk resolution errors in dev, do a clean `.next` rebuild first before debugging app logic.
 
 ---
 

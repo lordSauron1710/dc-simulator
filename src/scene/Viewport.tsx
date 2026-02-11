@@ -19,7 +19,7 @@ const PARAM_RANGES = {
   pue: { min: 1.05, max: 2 },
 } as const;
 
-type InteractiveKind = "building" | "hall";
+type InteractiveKind = "building" | "hall" | "rack";
 
 type DisposableObject3D = THREE.Object3D & {
   geometry?: THREE.BufferGeometry;
@@ -29,6 +29,7 @@ type DisposableObject3D = THREE.Object3D & {
 const INTERACTION_PRIORITY: Record<InteractiveKind, number> = {
   building: 1,
   hall: 2,
+  rack: 3,
 };
 
 interface VisualProfile {
@@ -46,6 +47,19 @@ interface InteractiveEntity {
   type: InteractiveKind;
   id: string;
   profile: VisualProfile;
+}
+
+interface HoverTarget {
+  type: InteractiveKind;
+  id: string;
+  entityKey: string | null;
+  rackInstanceIndex: number | null;
+}
+
+interface RackColorProfile {
+  base: THREE.Color;
+  hover: THREE.Color;
+  selected: THREE.Color;
 }
 
 interface CoolingPalette {
@@ -352,6 +366,27 @@ function makeEntityKey(type: InteractiveKind, id: string): string {
   return `${type}:${id}`;
 }
 
+function formatRackId(index: number): string {
+  return `R-${String(index).padStart(4, "0")}`;
+}
+
+function sameHoverTarget(previous: HoverTarget | null, next: HoverTarget | null): boolean {
+  if (!previous && !next) {
+    return true;
+  }
+
+  if (!previous || !next) {
+    return false;
+  }
+
+  return (
+    previous.type === next.type &&
+    previous.id === next.id &&
+    previous.entityKey === next.entityKey &&
+    previous.rackInstanceIndex === next.rackInstanceIndex
+  );
+}
+
 function resolveEntityKey(
   object: THREE.Object3D | null,
   objectToEntityKey: Map<string, string>
@@ -577,10 +612,19 @@ export function Viewport() {
   const floorRef = useRef<THREE.Mesh | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const interactiveRef = useRef<InteractiveEntity[]>([]);
-  const hoveredRef = useRef<InteractiveEntity | null>(null);
+  const hoveredRef = useRef<HoverTarget | null>(null);
   const raycastTargetsRef = useRef<THREE.Object3D[]>([]);
   const entityByKeyRef = useRef<Map<string, InteractiveEntity>>(new Map());
   const objectToEntityKeyRef = useRef<Map<string, string>>(new Map());
+  const rackMeshRef = useRef<THREE.InstancedMesh | null>(null);
+  const rackInstanceIdsRef = useRef<string[]>([]);
+  const rackIdToInstanceRef = useRef<Map<string, number>>(new Map());
+  const rackColorProfileRef = useRef<RackColorProfile | null>(null);
+  const rackVisualStateRef = useRef<{ hoveredIndex: number | null; selectedIndex: number | null }>({
+    hoveredIndex: null,
+    selectedIndex: null,
+  });
+  const selectionRef = useRef(state.selection);
   const renderSceneRef = useRef<() => void>(() => {});
   const applyVisualStateRef = useRef<() => void>(() => {});
 
@@ -653,7 +697,7 @@ export function Viewport() {
 
     const applyVisualState = () => {
       const hovered = hoveredRef.current;
-      const hoveredKey = hovered?.key ?? null;
+      const hoveredKey = hovered?.entityKey ?? null;
 
       interactiveRef.current.forEach((entity) => {
         const material = entity.mesh.material;
@@ -670,6 +714,69 @@ export function Viewport() {
           ? entity.profile.hoverEmissiveIntensity
           : entity.profile.baseEmissiveIntensity;
       });
+
+      const rackMesh = rackMeshRef.current;
+      const rackProfile = rackColorProfileRef.current;
+      if (!rackMesh || !rackProfile) {
+        return;
+      }
+
+      const hoveredIndex = hovered?.type === "rack" ? hovered.rackInstanceIndex : null;
+      const selection = selectionRef.current;
+      const selectedIndex =
+        selection.type === "rack"
+          ? rackIdToInstanceRef.current.get(selection.id) ?? null
+          : null;
+      const previousState = rackVisualStateRef.current;
+      let rackColorsChanged = false;
+
+      const restoreBaseColor = (index: number | null) => {
+        if (index === null || index < 0 || index >= rackMesh.count) {
+          return;
+        }
+
+        if (index === hoveredIndex || index === selectedIndex) {
+          return;
+        }
+
+        rackMesh.setColorAt(index, rackProfile.base);
+        rackColorsChanged = true;
+      };
+
+      if (previousState.hoveredIndex !== hoveredIndex) {
+        restoreBaseColor(previousState.hoveredIndex);
+      }
+
+      if (previousState.selectedIndex !== selectedIndex) {
+        restoreBaseColor(previousState.selectedIndex);
+      }
+
+      if (selectedIndex !== null && selectedIndex >= 0 && selectedIndex < rackMesh.count) {
+        rackMesh.setColorAt(
+          selectedIndex,
+          selectedIndex === hoveredIndex ? rackProfile.hover : rackProfile.selected
+        );
+        rackColorsChanged = true;
+      }
+
+      if (
+        hoveredIndex !== null &&
+        hoveredIndex >= 0 &&
+        hoveredIndex < rackMesh.count &&
+        hoveredIndex !== selectedIndex
+      ) {
+        rackMesh.setColorAt(hoveredIndex, rackProfile.hover);
+        rackColorsChanged = true;
+      }
+
+      if (rackColorsChanged && rackMesh.instanceColor) {
+        rackMesh.instanceColor.needsUpdate = true;
+      }
+
+      rackVisualStateRef.current = {
+        hoveredIndex,
+        selectedIndex,
+      };
     };
     applyVisualStateRef.current = applyVisualState;
 
@@ -690,7 +797,7 @@ export function Viewport() {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    const pickInteractive = (event: PointerEvent): InteractiveEntity | null => {
+    const pickInteractive = (event: PointerEvent): HoverTarget | null => {
       const bounds = renderer.domElement.getBoundingClientRect();
       if (bounds.width === 0 || bounds.height === 0) {
         return null;
@@ -702,9 +809,32 @@ export function Viewport() {
       raycaster.setFromCamera(pointer, camera);
       const intersections = raycaster.intersectObjects(raycastTargetsRef.current, true);
 
-      let bestEntity: InteractiveEntity | null = null;
+      let bestTarget: HoverTarget | null = null;
       let bestPriority = -1;
       for (const hit of intersections) {
+        const rackMesh = rackMeshRef.current;
+        if (
+          rackMesh &&
+          hit.object === rackMesh &&
+          hit.instanceId !== undefined &&
+          hit.instanceId !== null
+        ) {
+          const rackId = rackInstanceIdsRef.current[hit.instanceId];
+          if (rackId) {
+            const priority = INTERACTION_PRIORITY.rack;
+            if (priority > bestPriority) {
+              bestTarget = {
+                type: "rack",
+                id: rackId,
+                entityKey: null,
+                rackInstanceIndex: hit.instanceId,
+              };
+              bestPriority = priority;
+            }
+          }
+          continue;
+        }
+
         const entityKey = resolveEntityKey(hit.object, objectToEntityKeyRef.current);
         if (!entityKey) {
           continue;
@@ -714,19 +844,24 @@ export function Viewport() {
         if (candidate) {
           const priority = INTERACTION_PRIORITY[candidate.type];
           if (priority > bestPriority) {
-            bestEntity = candidate;
+            bestTarget = {
+              type: candidate.type,
+              id: candidate.id,
+              entityKey: candidate.key,
+              rackInstanceIndex: null,
+            };
             bestPriority = priority;
           }
         }
       }
 
-      return bestEntity;
+      return bestTarget;
     };
 
     const handlePointerMove = (event: PointerEvent) => {
       const nextHover = pickInteractive(event);
       const previous = hoveredRef.current;
-      if (previous?.mesh.uuid === nextHover?.mesh.uuid) {
+      if (sameHoverTarget(previous, nextHover)) {
         return;
       }
 
@@ -754,11 +889,7 @@ export function Viewport() {
         return;
       }
 
-      if (hit.type === "building") {
-        select({ id: "B-01", type: "building" });
-      } else {
-        select({ id: hit.id, type: "hall" });
-      }
+      select({ id: hit.id, type: hit.type });
       renderScene();
     };
 
@@ -801,6 +932,11 @@ export function Viewport() {
       interactiveRef.current = [];
       hoveredRef.current = null;
       raycastTargetsRef.current = [];
+      rackMeshRef.current = null;
+      rackInstanceIdsRef.current = [];
+      rackIdToInstanceRef.current.clear();
+      rackColorProfileRef.current = null;
+      rackVisualStateRef.current = { hoveredIndex: null, selectedIndex: null };
       entityByKeyRef.current.clear();
       objectToEntityKeyRef.current.clear();
     };
@@ -817,6 +953,11 @@ export function Viewport() {
     hoveredRef.current = null;
     raycastTargetsRef.current = [];
     interactiveRef.current = [];
+    rackMeshRef.current = null;
+    rackInstanceIdsRef.current = [];
+    rackIdToInstanceRef.current.clear();
+    rackColorProfileRef.current = null;
+    rackVisualStateRef.current = { hoveredIndex: null, selectedIndex: null };
     entityByKeyRef.current.clear();
     objectToEntityKeyRef.current.clear();
 
@@ -1001,6 +1142,41 @@ export function Viewport() {
       });
     };
 
+    const rackBaseColorHex = blendHex(0x334155, palette.hallEdge, lerp(0.24, 0.52, densityNorm));
+    const rackProfile: RackColorProfile = {
+      base: new THREE.Color(rackBaseColorHex),
+      hover: new THREE.Color(blendHex(rackBaseColorHex, 0xffffff, 0.34)),
+      selected: new THREE.Color(blendHex(rackBaseColorHex, 0x22d3ee, 0.54)),
+    };
+    const maxRackInstances = Math.max(0, model.rackCount);
+    const rackMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({
+        color: rackBaseColorHex,
+        emissive: tintHex(rackBaseColorHex, -0.28),
+        emissiveIntensity: lerp(0.12, 0.24, densityNorm),
+        roughness: 0.4,
+        metalness: 0.2,
+      }),
+      Math.max(1, maxRackInstances)
+    );
+    rackMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    rackMesh.count = 0;
+    rackMesh.renderOrder = 8;
+    layoutGroup.add(rackMesh);
+    raycastTargetsRef.current.push(rackMesh);
+    rackMeshRef.current = rackMesh;
+    rackColorProfileRef.current = rackProfile;
+
+    const rackInstanceIds: string[] = new Array(maxRackInstances);
+    const rackIdToInstance = new Map<string, number>();
+    let rackCursor = 0;
+    const rackMatrix = new THREE.Matrix4();
+    const rackPosition = new THREE.Vector3();
+    const rackScale = new THREE.Vector3();
+    const rackFacingFront = new THREE.Quaternion();
+    const rackFacingBack = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+
     model.halls.forEach((hall, index) => {
       const row = Math.floor(index / columns);
       const col = index % columns;
@@ -1046,31 +1222,57 @@ export function Viewport() {
       hallInteractionTargets.push(hallEdges);
 
       const utilization = hall.capacity > 0 ? clamp01(hall.rackCount / hall.capacity) : 0;
-      const rowBars = Math.max(1, Math.min(6, hall.packing.rowCount));
-      const rowBandWidth = hallWidth * 0.74;
-      const rowBarWidth = Math.max(0.1, (rowBandWidth / rowBars) * 0.7);
-      const rowBarHeight = hallHeight * lerp(0.22, 0.68, densityNorm) * lerp(0.5, 1, utilization);
-      const rowBarDepth = hallDepth * lerp(0.3, 0.86, utilization);
-      const rowStartX = x - ((rowBars - 1) * rowBarWidth) / 2;
-      const rowY = baseY + rowBarHeight / 2 + 0.04;
+      const rowCount = Math.max(1, hall.rows.length);
+      const rowBandWidth = hallWidth * lerp(0.68, 0.82, utilization);
+      const rowPitch = rowBandWidth / rowCount;
+      const rowStartX = x - rowBandWidth / 2 + rowPitch / 2;
+      const rowUsableDepth = hallDepth * lerp(0.72, 0.9, clamp01(utilization + 0.15));
+      const rackHeight = Math.max(
+        worldFromFeet(4.6),
+        Math.min(hallHeight * 0.72, worldFromFeet(lerp(6.2, 9.2, densityNorm)))
+      );
+      const rackY = baseY + worldFromFeet(0.35) + rackHeight / 2;
+      let rackOrdinal = hall.rackStartIndex > 0 ? hall.rackStartIndex : rackCursor + 1;
 
-      for (let rowIndex = 0; rowIndex < rowBars; rowIndex += 1) {
-        const bar = new THREE.Mesh(
-          new THREE.BoxGeometry(rowBarWidth, rowBarHeight, rowBarDepth),
-          new THREE.MeshStandardMaterial({
-            color: blendHex(hallBaseColor, efficiencyAccent, 0.12 + utilization * 0.2),
-            emissive: blendHex(0x0b1726, efficiencyAccent, 0.22 + utilization * 0.22),
-            emissiveIntensity: 0.16 + densityNorm * 0.18,
-            roughness: 0.36,
-            metalness: 0.14,
-            transparent: true,
-            opacity: 0.5 + utilization * 0.25,
-          })
+      hall.rows.forEach((hallRow, rowIndex) => {
+        if (hallRow.rackCount <= 0 || rackCursor >= maxRackInstances) {
+          return;
+        }
+
+        const rowX = rowStartX + rowPitch * rowIndex;
+        const hasCrossAisle = hallRow.rackCount >= 14;
+        const slotCount = hallRow.rackCount + (hasCrossAisle ? 1 : 0);
+        const rackPitchDepth = rowUsableDepth / Math.max(1, slotCount);
+        const rackWidth = Math.max(worldFromFeet(1), Math.min(worldFromFeet(2.4), rowPitch * 0.62));
+        const rackDepth = Math.max(
+          worldFromFeet(0.95),
+          Math.min(worldFromFeet(4), rackPitchDepth * 0.72)
         );
-        bar.position.set(rowStartX + rowIndex * rowBarWidth, rowY, z);
-        layoutGroup.add(bar);
-        hallInteractionTargets.push(bar);
-      }
+        const rowStartZ = z - rowUsableDepth / 2 + rackPitchDepth / 2;
+        const splitIndex = Math.floor(hallRow.rackCount / 2);
+        const rackRotation = rowIndex % 2 === 0 ? rackFacingFront : rackFacingBack;
+
+        for (
+          let rackIndex = 0;
+          rackIndex < hallRow.rackCount && rackCursor < maxRackInstances;
+          rackIndex += 1
+        ) {
+          const slotIndex = hasCrossAisle && rackIndex >= splitIndex ? rackIndex + 1 : rackIndex;
+          const rackZ = rowStartZ + slotIndex * rackPitchDepth;
+          const rackId = formatRackId(rackOrdinal);
+
+          rackPosition.set(rowX, rackY, rackZ);
+          rackScale.set(rackWidth, rackHeight, rackDepth);
+          rackMatrix.compose(rackPosition, rackRotation, rackScale);
+          rackMesh.setMatrixAt(rackCursor, rackMatrix);
+          rackMesh.setColorAt(rackCursor, rackProfile.base);
+
+          rackInstanceIds[rackCursor] = rackId;
+          rackIdToInstance.set(rackId, rackCursor);
+          rackCursor += 1;
+          rackOrdinal += 1;
+        }
+      });
 
       if (params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid") {
         const ductCount = params.coolingType === "Air-Cooled" ? 2 : 1;
@@ -1184,6 +1386,14 @@ export function Viewport() {
       hallAirTapPoints.push({ point: airTapPoint, entityKey: hallEntityKey });
       hallLiquidTapPoints.push({ point: liquidTapPoint, entityKey: hallEntityKey });
     });
+
+    rackMesh.count = rackCursor;
+    rackMesh.instanceMatrix.needsUpdate = true;
+    if (rackMesh.instanceColor) {
+      rackMesh.instanceColor.needsUpdate = true;
+    }
+    rackInstanceIdsRef.current = rackInstanceIds.slice(0, rackCursor);
+    rackIdToInstanceRef.current = rackIdToInstance;
 
     const coolingPlantX = buildingWidth / 2 + supportBandX * 0.64;
     const airNetworkEnabled = params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid";
@@ -1543,6 +1753,12 @@ export function Viewport() {
     applyVisualStateRef.current();
     renderSceneRef.current();
   }, [model, params]);
+
+  useEffect(() => {
+    selectionRef.current = state.selection;
+    applyVisualStateRef.current();
+    renderSceneRef.current();
+  }, [state.selection]);
 
   return <div ref={mountRef} className="viewport" aria-label="3D data center viewport" />;
 }

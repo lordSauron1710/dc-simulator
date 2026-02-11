@@ -92,7 +92,7 @@ export function ParamDrawer({
             label="Whitespace Area"
             value={params.whitespaceAreaSqFt}
             min={5000}
-            max={200000}
+            max={1000000}
             step={1000}
             unit=" sq ft"
             formatValue={formatNumber}

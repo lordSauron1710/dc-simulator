@@ -12,7 +12,7 @@ const FLOOR_SIZE = 280;
 
 const PARAM_RANGES = {
   criticalLoadMW: { min: 0.5, max: 1000 },
-  whitespaceAreaSqFt: { min: 5000, max: 200000 },
+  whitespaceAreaSqFt: { min: 5000, max: 1000000 },
   dataHalls: { min: 1, max: 100 },
   whitespaceRatio: { min: 0.25, max: 0.65 },
   rackPowerDensity: { min: 3, max: 80 },

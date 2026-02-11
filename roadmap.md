@@ -79,6 +79,7 @@ Create a collapsible parameter drawer with sliders and dropdowns for all inputs.
 ---
 
 ## Prompt 05 — DataCenterModel (core logic)
+<!-- EXECUTED -->
 
 **Prompt**  
 Implement pure functions converting params to a scene description:
@@ -97,6 +98,7 @@ Implement pure functions converting params to a scene description:
 ---
 
 ## Prompt 06 — 3D renderer foundation
+<!-- EXECUTED -->
 
 **Prompt**  
 Add a Three.js renderer with full-screen canvas, camera, lighting, resize handling.
@@ -112,6 +114,7 @@ Add a Three.js renderer with full-screen canvas, camera, lighting, resize handli
 ---
 
 ## Prompt 07 — Building + halls geometry
+<!-- EXECUTED -->
 
 **Prompt**  
 Generate translucent building shell and internal halls from the model.

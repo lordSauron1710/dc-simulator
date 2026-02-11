@@ -17,6 +17,13 @@ function formatNumber(value: number): string {
   return value.toLocaleString("en-US");
 }
 
+function formatCriticalLoad(value: number): string {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)} GW`;
+  }
+  return `${value.toLocaleString("en-US")} MW`;
+}
+
 /**
  * Collapsible parameter drawer with sliders and dropdowns.
  * Uses industry-standard data center terminology.
@@ -75,9 +82,9 @@ export function ParamDrawer({
             label="Critical IT Load"
             value={params.criticalLoadMW}
             min={0.5}
-            max={50}
+            max={1000}
             step={0.5}
-            unit=" MW"
+            formatValue={formatCriticalLoad}
             onChange={handleSliderChange("criticalLoadMW")}
           />
 
@@ -96,7 +103,7 @@ export function ParamDrawer({
             label="Data Halls"
             value={params.dataHalls}
             min={1}
-            max={12}
+            max={100}
             step={1}
             onChange={handleSliderChange("dataHalls")}
           />
@@ -120,7 +127,7 @@ export function ParamDrawer({
             label="Avg. Rack Density"
             value={params.rackPowerDensity}
             min={3}
-            max={50}
+            max={80}
             step={1}
             unit=" kW/rack"
             onChange={handleSliderChange("rackPowerDensity")}

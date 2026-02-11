@@ -1,22 +1,1548 @@
 "use client";
 
-import React from "react";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { computeDataCenter, type DataCenterModel } from "@/model";
+import { useStore } from "@/state";
+import type { Params } from "@/state/types";
 
-/**
- * Placeholder viewport: dark canvas, CSS 3D scene with grid floor and rack cluster.
- * Will be replaced by Three.js renderer in Prompt 06.
- */
-export function Viewport() {
-  return (
-    <div className="viewport">
-      <div className="scene">
-        <div className="grid-floor" />
-        <div className="rack-cluster">
-          {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} className="rack" />
-          ))}
-        </div>
-      </div>
-    </div>
+const MAX_PIXEL_RATIO = 2;
+const FOOT_TO_WORLD = 0.115;
+const FLOOR_SIZE = 280;
+
+const PARAM_RANGES = {
+  criticalLoadMW: { min: 0.5, max: 1000 },
+  whitespaceAreaSqFt: { min: 5000, max: 200000 },
+  dataHalls: { min: 1, max: 100 },
+  whitespaceRatio: { min: 0.25, max: 0.65 },
+  rackPowerDensity: { min: 3, max: 80 },
+  pue: { min: 1.05, max: 2 },
+} as const;
+
+type InteractiveKind = "building" | "hall";
+
+type DisposableObject3D = THREE.Object3D & {
+  geometry?: THREE.BufferGeometry;
+  material?: THREE.Material | THREE.Material[];
+};
+
+const INTERACTION_PRIORITY: Record<InteractiveKind, number> = {
+  building: 1,
+  hall: 2,
+};
+
+interface VisualProfile {
+  baseColor: number;
+  hoverColor: number;
+  baseOpacity: number;
+  hoverOpacity: number;
+  baseEmissiveIntensity: number;
+  hoverEmissiveIntensity: number;
+}
+
+interface InteractiveEntity {
+  key: string;
+  mesh: THREE.Mesh;
+  type: InteractiveKind;
+  id: string;
+  profile: VisualProfile;
+}
+
+interface CoolingPalette {
+  shell: number;
+  shellEdge: number;
+  hall: number;
+  hallEdge: number;
+  containmentHot: number;
+  containmentCold: number;
+  flowAir: number;
+  flowLiquid: number;
+}
+
+interface ContainmentGeometry {
+  hallInset: number;
+  hotLane: boolean;
+  coldLane: boolean;
+  fullEnclosure: boolean;
+}
+
+interface RedundancyLayout {
+  color: number;
+  modulePositions: Array<{ x: number; z: number }>;
+  dualPaths: boolean;
+}
+
+interface ParamNorms {
+  critical: number;
+  area: number;
+  halls: number;
+  whitespace: number;
+  density: number;
+  pue: number;
+}
+
+interface SceneScale {
+  norms: ParamNorms;
+  loadPressure: number;
+  buildingWidthFt: number;
+  buildingDepthFt: number;
+  buildingHeightFt: number;
+  hallHeightFt: number;
+  hallFieldWidthFt: number;
+  hallFieldDepthFt: number;
+  availableHallFieldWidthFt: number;
+  availableHallFieldDepthFt: number;
+  supportBandXFt: number;
+  supportBandZFt: number;
+  supportBandFt: number;
+  plinthMarginFt: number;
+  hallColumns: number;
+  hallRows: number;
+  hallCellWidthFt: number;
+  hallCellDepthFt: number;
+  hallWidthFt: number;
+  hallDepthFt: number;
+}
+
+function disposeMaterial(material?: THREE.Material | THREE.Material[]): void {
+  if (!material) {
+    return;
+  }
+
+  if (Array.isArray(material)) {
+    material.forEach((entry) => entry.dispose());
+    return;
+  }
+
+  material.dispose();
+}
+
+function disposeObjectTree(object: THREE.Object3D): void {
+  object.traverse((entry) => {
+    const disposable = entry as DisposableObject3D;
+    disposable.geometry?.dispose();
+    disposeMaterial(disposable.material);
+  });
+}
+
+function disableDepthWriteForTransparentMaterials(object: THREE.Object3D): void {
+  object.traverse((entry) => {
+    const disposable = entry as DisposableObject3D;
+    const material = disposable.material;
+    if (!material) {
+      return;
+    }
+
+    const materials = Array.isArray(material) ? material : [material];
+    materials.forEach((item) => {
+      if (item.transparent) {
+        item.depthWrite = false;
+        item.depthTest = true;
+      }
+    });
+  });
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function worldFromFeet(valueFt: number): number {
+  return valueFt * FOOT_TO_WORLD;
+}
+
+function normalize(value: number, min: number, max: number): number {
+  if (max <= min) {
+    return 0;
+  }
+  return clamp01((value - min) / (max - min));
+}
+
+function lerp(start: number, end: number, t: number): number {
+  return start + (end - start) * t;
+}
+
+function blendHex(fromColor: number, toColor: number, amount: number): number {
+  const from = new THREE.Color(fromColor);
+  const to = new THREE.Color(toColor);
+  from.lerp(to, clamp01(amount));
+  return from.getHex();
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+}
+
+function normalizeSceneParams(params: Params): ParamNorms {
+  return {
+    critical: normalize(
+      params.criticalLoadMW,
+      PARAM_RANGES.criticalLoadMW.min,
+      PARAM_RANGES.criticalLoadMW.max
+    ),
+    area: normalize(
+      params.whitespaceAreaSqFt,
+      PARAM_RANGES.whitespaceAreaSqFt.min,
+      PARAM_RANGES.whitespaceAreaSqFt.max
+    ),
+    halls: normalize(params.dataHalls, PARAM_RANGES.dataHalls.min, PARAM_RANGES.dataHalls.max),
+    whitespace: normalize(
+      params.whitespaceRatio,
+      PARAM_RANGES.whitespaceRatio.min,
+      PARAM_RANGES.whitespaceRatio.max
+    ),
+    density: normalize(
+      params.rackPowerDensity,
+      PARAM_RANGES.rackPowerDensity.min,
+      PARAM_RANGES.rackPowerDensity.max
+    ),
+    pue: normalize(params.pue, PARAM_RANGES.pue.min, PARAM_RANGES.pue.max),
+  };
+}
+
+function tintHex(color: number, amount: number): number {
+  const base = new THREE.Color(color);
+  const target = amount >= 0 ? new THREE.Color(0xffffff) : new THREE.Color(0x000000);
+  base.lerp(target, clamp01(Math.abs(amount)));
+  return base.getHex();
+}
+
+function getCoolingPalette(coolingType: "Air-Cooled" | "DLC" | "Hybrid"): CoolingPalette {
+  switch (coolingType) {
+    case "DLC":
+      return {
+        shell: 0x0c3f45,
+        shellEdge: 0x2dd4bf,
+        hall: 0x0f766e,
+        hallEdge: 0x5eead4,
+        containmentHot: 0xef4444,
+        containmentCold: 0x38bdf8,
+        flowAir: 0x7dd3fc,
+        flowLiquid: 0x2dd4bf,
+      };
+    case "Hybrid":
+      return {
+        shell: 0x173a5d,
+        shellEdge: 0x60a5fa,
+        hall: 0x25618d,
+        hallEdge: 0x93c5fd,
+        containmentHot: 0xf97316,
+        containmentCold: 0x38bdf8,
+        flowAir: 0x67e8f9,
+        flowLiquid: 0x4ade80,
+      };
+    case "Air-Cooled":
+    default:
+      return {
+        shell: 0x13314a,
+        shellEdge: 0x7dd3fc,
+        hall: 0x22466e,
+        hallEdge: 0x70bdf5,
+        containmentHot: 0xf97316,
+        containmentCold: 0x38bdf8,
+        flowAir: 0x60a5fa,
+        flowLiquid: 0x67e8f9,
+      };
+  }
+}
+
+function getContainmentGeometry(
+  containment: "None" | "Hot Aisle" | "Cold Aisle" | "Full Enclosure",
+  coolingType: "Air-Cooled" | "DLC" | "Hybrid"
+): ContainmentGeometry {
+  const coolingInset =
+    coolingType === "Air-Cooled" ? 0.04 : coolingType === "DLC" ? -0.03 : 0.01;
+
+  switch (containment) {
+    case "Hot Aisle":
+      return { hallInset: 0.12 + coolingInset, hotLane: true, coldLane: false, fullEnclosure: false };
+    case "Cold Aisle":
+      return { hallInset: 0.12 + coolingInset, hotLane: false, coldLane: true, fullEnclosure: false };
+    case "Full Enclosure":
+      return { hallInset: 0.18 + coolingInset, hotLane: true, coldLane: true, fullEnclosure: true };
+    case "None":
+    default:
+      return { hallInset: 0.08 + coolingInset, hotLane: false, coldLane: false, fullEnclosure: false };
+  }
+}
+
+function getRedundancyLayout(
+  redundancy: "N" | "N+1" | "2N",
+  buildingWidthFt: number,
+  buildingDepthFt: number
+): RedundancyLayout {
+  const front = buildingDepthFt / 2 + 18;
+  const side = Math.min(buildingWidthFt * 0.32, 55);
+
+  if (redundancy === "2N") {
+    return {
+      color: 0xdc2626,
+      dualPaths: true,
+      modulePositions: [
+        { x: -side, z: front },
+        { x: side, z: front },
+        { x: -side, z: -front },
+        { x: side, z: -front },
+      ],
+    };
+  }
+
+  if (redundancy === "N+1") {
+    return {
+      color: 0x0ea5e9,
+      dualPaths: false,
+      modulePositions: [
+        { x: -side, z: front },
+        { x: side, z: front },
+        { x: 0, z: -front * 0.88 },
+      ],
+    };
+  }
+
+  return {
+    color: 0xf59e0b,
+    dualPaths: false,
+    modulePositions: [{ x: 0, z: front }],
+  };
+}
+
+function createVisualProfile(
+  baseColor: number,
+  baseOpacity: number,
+  baseEmissiveIntensity: number
+): VisualProfile {
+  return {
+    baseColor,
+    hoverColor: tintHex(baseColor, 0.24),
+    baseOpacity,
+    hoverOpacity: Math.min(0.9, baseOpacity + 0.1),
+    baseEmissiveIntensity,
+    hoverEmissiveIntensity: baseEmissiveIntensity + 0.1,
+  };
+}
+
+function createPipeSegment(
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+  radius: number,
+  materialParams: THREE.MeshStandardMaterialParameters
+): THREE.Mesh | null {
+  const direction = new THREE.Vector3().subVectors(end, start);
+  const length = direction.length();
+
+  if (length < 0.001) {
+    return null;
+  }
+
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, length, 10),
+    new THREE.MeshStandardMaterial(materialParams)
   );
+
+  mesh.position.copy(start).add(end).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function makeEntityKey(type: InteractiveKind, id: string): string {
+  return `${type}:${id}`;
+}
+
+function resolveEntityKey(
+  object: THREE.Object3D | null,
+  objectToEntityKey: Map<string, string>
+): string | null {
+  let current: THREE.Object3D | null = object;
+
+  while (current) {
+    const key = objectToEntityKey.get(current.uuid);
+    if (key) {
+      return key;
+    }
+    current = current.parent;
+  }
+
+  return null;
+}
+
+interface HallPacking {
+  columns: number;
+  rows: number;
+  hallWidthFt: number;
+  hallDepthFt: number;
+}
+
+function chooseHallPacking(
+  hallCount: number,
+  footprintAspect: number,
+  candidates: Array<{ widthFt: number; depthFt: number }>
+): HallPacking {
+  const safeFootprintAspect = Math.max(0.08, footprintAspect);
+  const validCandidates =
+    candidates.length > 0 ? candidates : [{ widthFt: 20, depthFt: 40 }];
+
+  let best: HallPacking = {
+    columns: 1,
+    rows: hallCount,
+    hallWidthFt: validCandidates[0].widthFt,
+    hallDepthFt: validCandidates[0].depthFt,
+  };
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const candidate of validCandidates) {
+    const hallAspect = candidate.widthFt / Math.max(candidate.depthFt, 0.01);
+
+    for (let columns = 1; columns <= hallCount; columns += 1) {
+      const rows = Math.ceil(hallCount / columns);
+      const gridAspect = (columns * hallAspect) / Math.max(rows, 1);
+      const aspectPenalty = Math.abs(
+        Math.log(Math.max(0.08, gridAspect) / safeFootprintAspect)
+      );
+      const emptyCells = columns * rows - hallCount;
+      const density = hallCount / Math.max(1, columns * rows);
+      const stretch = Math.max(columns, rows) / Math.max(1, Math.min(columns, rows));
+      const score =
+        aspectPenalty * 5 +
+        emptyCells * 0.55 +
+        (1 - density) * 2.2 +
+        (stretch - 1) * 0.08;
+
+      if (score < bestScore) {
+        bestScore = score;
+        best = {
+          columns,
+          rows,
+          hallWidthFt: candidate.widthFt,
+          hallDepthFt: candidate.depthFt,
+        };
+      }
+    }
+  }
+
+  return best;
+}
+
+function deriveSceneScale(params: Params, model: DataCenterModel): SceneScale {
+  const norms = normalizeSceneParams(params);
+  const footprintAreaSqFt = Math.max(model.area.grossFacilitySqFt, 1);
+  const whitespaceAreaSqFt = Math.max(model.area.whitespaceSqFt, 1);
+  const loadPressure = clamp01(model.rackCount / Math.max(model.rackCapacityBySpace, 1));
+  const supportShare = normalize(1 - params.whitespaceRatio, 0.35, 0.75);
+  const coolingAspectOffset =
+    params.coolingType === "Air-Cooled" ? 0.18 : params.coolingType === "DLC" ? -0.12 : 0.04;
+  const buildingAspectRatio = Math.max(
+    1.05,
+    lerp(1.2, 1.92, norms.whitespace) + coolingAspectOffset
+  );
+
+  const buildingWidthFt = Math.sqrt(footprintAreaSqFt / buildingAspectRatio);
+  const buildingDepthFt = footprintAreaSqFt / buildingWidthFt;
+  const redundancyHeightFt =
+    params.redundancy === "2N" ? 4 : params.redundancy === "N+1" ? 2 : 0;
+  const areaHeightLiftFt = lerp(1.5, 12, Math.pow(norms.area, 0.72));
+  const loadHeightLiftFt = lerp(0, 7, loadPressure);
+  const buildingHeightFt =
+    lerp(16, 28, norms.critical) +
+    lerp(0, 8, norms.pue) +
+    redundancyHeightFt +
+    areaHeightLiftFt +
+    loadHeightLiftFt;
+
+  const coolingPlenumFt =
+    params.coolingType === "Air-Cooled" ? 2.6 : params.coolingType === "Hybrid" ? 1.6 : 0.8;
+  const hallHeightFt =
+    lerp(8, 13, norms.density) +
+    coolingPlenumFt +
+    lerp(0, 2, norms.critical) +
+    lerp(0.5, 4.5, loadPressure) +
+    lerp(0, 2.5, norms.area);
+
+  const hallCount = Math.max(1, model.halls.length);
+  const footprintAspect = buildingWidthFt / Math.max(buildingDepthFt, 0.01);
+  const hallWidthsFt = model.halls.map((hall) => hall.dimensionsFt.width);
+  const hallLengthsFt = model.halls.map((hall) => hall.dimensionsFt.length);
+  const hallGrossAreasSqFt = model.halls.map((hall) => hall.grossSqFt);
+  const avgHallAspect = clamp01(
+    (average(hallLengthsFt.map((lengthFt, index) => lengthFt / Math.max(hallWidthsFt[index], 1))) -
+      1) /
+      2.5
+  );
+  const hallAspectRatio = lerp(1.2, 3.5, avgHallAspect);
+  const avgHallGrossSqFt = Math.max(256, average(hallGrossAreasSqFt));
+  const grossShortSideFt = Math.sqrt(avgHallGrossSqFt / hallAspectRatio);
+  const grossLongSideFt = grossShortSideFt * hallAspectRatio;
+  const hallPacking = chooseHallPacking(hallCount, footprintAspect, [
+    { widthFt: grossShortSideFt, depthFt: grossLongSideFt },
+    { widthFt: grossLongSideFt, depthFt: grossShortSideFt },
+  ]);
+
+  const columns = hallPacking.columns;
+  const rows = hallPacking.rows;
+  const baseHallWidthFt = Math.max(10, hallPacking.hallWidthFt);
+  const baseHallDepthFt = Math.max(10, hallPacking.hallDepthFt);
+
+  const baseCirculationFactor = lerp(1.04, 1.2, Math.sqrt(norms.halls));
+  const containmentCirculationBoost =
+    params.containment === "Full Enclosure"
+      ? 0.05
+      : params.containment === "Hot Aisle" || params.containment === "Cold Aisle"
+        ? 0.025
+        : 0;
+  const loadCirculationBias = lerp(0.03, -0.03, loadPressure);
+  const circulationFactor = Math.min(
+    1.28,
+    Math.max(0.98, baseCirculationFactor + containmentCirculationBoost + loadCirculationBias)
+  );
+
+  const rawHallFieldWidthFt = baseHallWidthFt * columns * circulationFactor;
+  const rawHallFieldDepthFt = baseHallDepthFt * rows * circulationFactor;
+  const fieldAspect = rawHallFieldWidthFt / Math.max(rawHallFieldDepthFt, 0.01);
+  const modeledFieldAreaSqFt = Math.max(1, rawHallFieldWidthFt * rawHallFieldDepthFt);
+  const hallCoreAreaSqFt = Math.max(1, baseHallWidthFt * baseHallDepthFt * hallCount);
+  const targetFieldAreaSqFt = Math.max(
+    modeledFieldAreaSqFt,
+    hallCoreAreaSqFt * 1.03,
+    whitespaceAreaSqFt * lerp(0.88, 0.98, norms.whitespace)
+  );
+  let hallFieldWidthFt = Math.sqrt(targetFieldAreaSqFt * fieldAspect);
+  let hallFieldDepthFt = targetFieldAreaSqFt / Math.max(hallFieldWidthFt, 0.01);
+
+  const minPerimeterSupportFt = lerp(6, 20, supportShare) + lerp(1, 4, norms.pue);
+  const maxHallFieldWidthFt = Math.max(26, buildingWidthFt - minPerimeterSupportFt * 2);
+  const maxHallFieldDepthFt = Math.max(26, buildingDepthFt - minPerimeterSupportFt * 2);
+  const hallFieldFitScale = Math.min(
+    1,
+    maxHallFieldWidthFt / Math.max(hallFieldWidthFt, 0.01),
+    maxHallFieldDepthFt / Math.max(hallFieldDepthFt, 0.01)
+  );
+  hallFieldWidthFt *= hallFieldFitScale;
+  hallFieldDepthFt *= hallFieldFitScale;
+
+  const supportBandXFt = Math.max(8, (buildingWidthFt - hallFieldWidthFt) / 2);
+  const supportBandZFt = Math.max(8, (buildingDepthFt - hallFieldDepthFt) / 2);
+  const supportBandFt = Math.min(supportBandXFt, supportBandZFt);
+  const availableHallFieldWidthFt = Math.max(20, hallFieldWidthFt * 0.985);
+  const availableHallFieldDepthFt = Math.max(20, hallFieldDepthFt * 0.985);
+  const hallCellWidthFt = availableHallFieldWidthFt / columns;
+  const hallCellDepthFt = availableHallFieldDepthFt / rows;
+
+  const rawHallWidthFt = baseHallWidthFt * hallFieldFitScale;
+  const rawHallDepthFt = baseHallDepthFt * hallFieldFitScale;
+  const maxAisleRatio = clamp01(lerp(0.08, 0.2, Math.sqrt(norms.halls)) + containmentCirculationBoost * 0.25);
+  const maxHallWidthFt = Math.max(10, hallCellWidthFt * (1 - maxAisleRatio));
+  const maxHallDepthFt = Math.max(10, hallCellDepthFt * (1 - maxAisleRatio));
+  const widthScale = Math.max(0.74, Math.min(1.48, maxHallWidthFt / Math.max(rawHallWidthFt, 0.01)));
+  const depthScale = Math.max(0.74, Math.min(1.48, maxHallDepthFt / Math.max(rawHallDepthFt, 0.01)));
+  const hallWidthFt = Math.max(8, rawHallWidthFt * widthScale);
+  const hallDepthFt = Math.max(8, rawHallDepthFt * depthScale);
+  const plinthMarginFt = lerp(34, 68, norms.area);
+
+  return {
+    norms,
+    loadPressure,
+    buildingWidthFt,
+    buildingDepthFt,
+    buildingHeightFt,
+    hallHeightFt,
+    hallFieldWidthFt,
+    hallFieldDepthFt,
+    availableHallFieldWidthFt,
+    availableHallFieldDepthFt,
+    supportBandXFt,
+    supportBandZFt,
+    supportBandFt,
+    plinthMarginFt,
+    hallColumns: columns,
+    hallRows: rows,
+    hallCellWidthFt,
+    hallCellDepthFt,
+    hallWidthFt,
+    hallDepthFt,
+  };
+}
+
+export function Viewport() {
+  const { state, select } = useStore();
+  const { params } = state;
+  const model = useMemo(() => computeDataCenter(params), [params]);
+
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const layoutGroupRef = useRef<THREE.Group | null>(null);
+  const floorRef = useRef<THREE.Mesh | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const interactiveRef = useRef<InteractiveEntity[]>([]);
+  const hoveredRef = useRef<InteractiveEntity | null>(null);
+  const raycastTargetsRef = useRef<THREE.Object3D[]>([]);
+  const entityByKeyRef = useRef<Map<string, InteractiveEntity>>(new Map());
+  const objectToEntityKeyRef = useRef<Map<string, string>>(new Map());
+  const renderSceneRef = useRef<() => void>(() => {});
+  const applyVisualStateRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const mountElement = mountRef.current;
+    if (!mountElement) {
+      return undefined;
+    }
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x141920, 35, 220);
+    sceneRef.current = scene;
+
+    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 500);
+    camera.position.set(42, 30, 38);
+    camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+    renderer.setSize(mountElement.clientWidth, mountElement.clientHeight, false);
+    mountElement.appendChild(renderer.domElement);
+
+    const hemisphere = new THREE.HemisphereLight(0xaec4ff, 0x11151d, 0.55);
+    scene.add(hemisphere);
+
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.05);
+    keyLight.position.set(28, 40, 20);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.45);
+    rimLight.position.set(-24, 20, -16);
+    scene.add(rimLight);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE),
+      new THREE.MeshStandardMaterial({
+        color: 0x0f1318,
+        roughness: 1,
+        metalness: 0,
+      })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.02;
+    scene.add(floor);
+    floorRef.current = floor;
+
+    const grid = new THREE.GridHelper(FLOOR_SIZE * 0.78, 96, 0x334155, 0x1f2937);
+    const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    gridMaterials.forEach((material) => {
+      material.transparent = true;
+      material.opacity = 0.4;
+    });
+    scene.add(grid);
+    gridRef.current = grid;
+
+    const layoutGroup = new THREE.Group();
+    scene.add(layoutGroup);
+    layoutGroupRef.current = layoutGroup;
+
+    const renderScene = () => {
+      renderer.render(scene, camera);
+    };
+    renderSceneRef.current = renderScene;
+
+    const applyVisualState = () => {
+      const hovered = hoveredRef.current;
+      const hoveredKey = hovered?.key ?? null;
+
+      interactiveRef.current.forEach((entity) => {
+        const material = entity.mesh.material;
+        if (!(material instanceof THREE.MeshStandardMaterial)) {
+          return;
+        }
+
+        const hoveredMatch = hoveredKey === entity.key;
+        material.color.setHex(hoveredMatch ? entity.profile.hoverColor : entity.profile.baseColor);
+        material.opacity = hoveredMatch
+          ? entity.profile.hoverOpacity
+          : entity.profile.baseOpacity;
+        material.emissiveIntensity = hoveredMatch
+          ? entity.profile.hoverEmissiveIntensity
+          : entity.profile.baseEmissiveIntensity;
+      });
+    };
+    applyVisualStateRef.current = applyVisualState;
+
+    const resizeRenderer = () => {
+      const width = mountElement.clientWidth;
+      const height = mountElement.clientHeight;
+      if (width === 0 || height === 0) {
+        return;
+      }
+
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
+      renderer.setSize(width, height, false);
+      renderScene();
+    };
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    const pickInteractive = (event: PointerEvent): InteractiveEntity | null => {
+      const bounds = renderer.domElement.getBoundingClientRect();
+      if (bounds.width === 0 || bounds.height === 0) {
+        return null;
+      }
+
+      pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+      pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const intersections = raycaster.intersectObjects(raycastTargetsRef.current, true);
+
+      let bestEntity: InteractiveEntity | null = null;
+      let bestPriority = -1;
+      for (const hit of intersections) {
+        const entityKey = resolveEntityKey(hit.object, objectToEntityKeyRef.current);
+        if (!entityKey) {
+          continue;
+        }
+
+        const candidate = entityByKeyRef.current.get(entityKey);
+        if (candidate) {
+          const priority = INTERACTION_PRIORITY[candidate.type];
+          if (priority > bestPriority) {
+            bestEntity = candidate;
+            bestPriority = priority;
+          }
+        }
+      }
+
+      return bestEntity;
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const nextHover = pickInteractive(event);
+      const previous = hoveredRef.current;
+      if (previous?.mesh.uuid === nextHover?.mesh.uuid) {
+        return;
+      }
+
+      hoveredRef.current = nextHover;
+      mountElement.style.cursor = nextHover ? "pointer" : "default";
+      applyVisualState();
+      renderScene();
+    };
+
+    const handlePointerLeave = () => {
+      if (!hoveredRef.current) {
+        mountElement.style.cursor = "default";
+        return;
+      }
+
+      hoveredRef.current = null;
+      mountElement.style.cursor = "default";
+      applyVisualState();
+      renderScene();
+    };
+
+    const handleClick = (event: PointerEvent) => {
+      const hit = pickInteractive(event);
+      if (!hit) {
+        return;
+      }
+
+      if (hit.type === "building") {
+        select({ id: "B-01", type: "building" });
+      } else {
+        select({ id: hit.id, type: "hall" });
+      }
+      renderScene();
+    };
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => resizeRenderer())
+        : null;
+
+    renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
+    renderer.domElement.addEventListener("click", handleClick);
+    resizeRenderer();
+    renderScene();
+    window.addEventListener("resize", resizeRenderer);
+    resizeObserver?.observe(mountElement);
+
+    return () => {
+      renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
+      renderer.domElement.removeEventListener("click", handleClick);
+      window.removeEventListener("resize", resizeRenderer);
+      resizeObserver?.disconnect();
+      mountElement.style.cursor = "default";
+
+      disposeObjectTree(scene);
+
+      renderer.renderLists.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+
+      if (renderer.domElement.parentElement === mountElement) {
+        mountElement.removeChild(renderer.domElement);
+      }
+
+      cameraRef.current = null;
+      sceneRef.current = null;
+      layoutGroupRef.current = null;
+      floorRef.current = null;
+      gridRef.current = null;
+      interactiveRef.current = [];
+      hoveredRef.current = null;
+      raycastTargetsRef.current = [];
+      entityByKeyRef.current.clear();
+      objectToEntityKeyRef.current.clear();
+    };
+  }, [select]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+    const layoutGroup = layoutGroupRef.current;
+    if (!scene || !camera || !layoutGroup) {
+      return;
+    }
+
+    hoveredRef.current = null;
+    raycastTargetsRef.current = [];
+    interactiveRef.current = [];
+    entityByKeyRef.current.clear();
+    objectToEntityKeyRef.current.clear();
+
+    while (layoutGroup.children.length > 0) {
+      const child = layoutGroup.children[0];
+      layoutGroup.remove(child);
+      disposeObjectTree(child);
+    }
+
+    // Parameter-driven visual mapping:
+    // - criticalLoadMW: vertical scale and utility module sizing
+    // - whitespaceAreaSqFt: overall footprint
+    // - dataHalls: hall count and grid packing
+    // - whitespaceRatio: support-space band around whitespace
+    // - rackPowerDensity: hall fill height/intensity
+    // - redundancy: external utility topology (N, N+1, 2N)
+    // - pue: efficiency tint + plant intensity
+    // - coolingType: infrastructure style + palette
+    // - containment: aisle/containment overlays
+    const scale = deriveSceneScale(params, model);
+    const {
+      critical: criticalNorm,
+      area: areaNorm,
+      halls: hallsNorm,
+      density: densityNorm,
+      pue: pueNorm,
+    } = scale.norms;
+
+    const palette = getCoolingPalette(params.coolingType);
+    const containment = getContainmentGeometry(params.containment, params.coolingType);
+    const efficiencyAccent = blendHex(0x22d3ee, 0xf97316, pueNorm);
+
+    const buildingWidthFt = scale.buildingWidthFt;
+    const buildingDepthFt = scale.buildingDepthFt;
+    const buildingHeightFt = scale.buildingHeightFt;
+    const hallHeightFt = scale.hallHeightFt;
+
+    const buildingWidth = worldFromFeet(buildingWidthFt);
+    const buildingDepth = worldFromFeet(buildingDepthFt);
+    const buildingHeight = worldFromFeet(buildingHeightFt);
+    const hallHeight = worldFromFeet(hallHeightFt);
+    const baseY = 0.02;
+
+    const supportBandX = worldFromFeet(scale.supportBandXFt);
+    const hallFieldWidth = worldFromFeet(scale.hallFieldWidthFt);
+    const hallFieldDepth = worldFromFeet(scale.hallFieldDepthFt);
+
+    const plinthMargin = worldFromFeet(scale.plinthMarginFt);
+    const plinth = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        buildingWidth + plinthMargin,
+        worldFromFeet(4),
+        buildingDepth + plinthMargin
+      ),
+      new THREE.MeshStandardMaterial({
+        color: blendHex(0x111827, efficiencyAccent, lerp(0.02, 0.22, pueNorm)),
+        roughness: 0.88,
+        metalness: 0.04,
+      })
+    );
+    plinth.position.y = worldFromFeet(2);
+    layoutGroup.add(plinth);
+    const buildingInteractionTargets: THREE.Object3D[] = [plinth];
+
+    const serviceDeck = new THREE.Mesh(
+      new THREE.BoxGeometry(buildingWidth, worldFromFeet(1.6), buildingDepth),
+      new THREE.MeshStandardMaterial({
+        color: tintHex(0x172134, -0.08),
+        roughness: 0.9,
+        metalness: 0.02,
+      })
+    );
+    serviceDeck.position.y = worldFromFeet(0.9);
+    layoutGroup.add(serviceDeck);
+    buildingInteractionTargets.push(serviceDeck);
+
+    const whitespaceDeck = new THREE.Mesh(
+      new THREE.BoxGeometry(hallFieldWidth, worldFromFeet(1.75), hallFieldDepth),
+      new THREE.MeshStandardMaterial({
+        color: blendHex(0x0b2238, palette.shellEdge, 0.25),
+        roughness: 0.78,
+        metalness: 0.04,
+      })
+    );
+    whitespaceDeck.position.y = worldFromFeet(2);
+    layoutGroup.add(whitespaceDeck);
+    buildingInteractionTargets.push(whitespaceDeck);
+
+    const shellBaseColor = blendHex(palette.shell, efficiencyAccent, lerp(0.1, 0.3, pueNorm));
+    const shellOpacity = Math.min(0.48, lerp(0.16, 0.34, pueNorm) + lerp(0.02, 0.1, areaNorm));
+    const shellEmissive = lerp(0.08, 0.2, pueNorm);
+
+    const buildingMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(buildingWidth, buildingHeight, buildingDepth),
+      new THREE.MeshStandardMaterial({
+        color: shellBaseColor,
+        emissive: tintHex(shellBaseColor, -0.38),
+        emissiveIntensity: shellEmissive,
+        roughness: 0.46,
+        metalness: 0.08,
+        transparent: true,
+        opacity: shellOpacity,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    buildingMesh.renderOrder = -1;
+    buildingMesh.position.y = baseY + buildingHeight / 2;
+    layoutGroup.add(buildingMesh);
+    buildingInteractionTargets.push(buildingMesh);
+
+    const buildingEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(buildingMesh.geometry),
+      new THREE.LineBasicMaterial({
+        color: palette.shellEdge,
+        transparent: true,
+        opacity: lerp(0.3, 0.62, pueNorm),
+      })
+    );
+    buildingEdges.renderOrder = 6;
+    buildingEdges.position.copy(buildingMesh.position);
+    layoutGroup.add(buildingEdges);
+    buildingInteractionTargets.push(buildingEdges);
+
+    const roofPlantCount = Math.max(1, Math.round(lerp(1, 4, pueNorm)));
+    const roofPlantWidthFt = Math.max(8, (buildingWidthFt * 0.65) / roofPlantCount);
+    const roofPlantHeightFt = lerp(4, 11, pueNorm);
+    const roofPlantDepthFt = lerp(6.5, 14.5, pueNorm);
+    const roofPlantWidth = worldFromFeet(roofPlantWidthFt);
+    const roofPlantHeight = worldFromFeet(roofPlantHeightFt);
+    const roofPlantDepth = worldFromFeet(roofPlantDepthFt);
+    const roofStartX = -((roofPlantCount - 1) * roofPlantWidth) / 2;
+
+    for (let index = 0; index < roofPlantCount; index += 1) {
+      const roofPlant = new THREE.Mesh(
+        new THREE.BoxGeometry(roofPlantWidth * 0.84, roofPlantHeight, roofPlantDepth),
+        new THREE.MeshStandardMaterial({
+          color: blendHex(0x334155, efficiencyAccent, 0.35),
+          emissive: blendHex(0x111827, efficiencyAccent, 0.2),
+          emissiveIntensity: 0.14 + pueNorm * 0.12,
+          roughness: 0.4,
+          metalness: 0.25,
+          transparent: true,
+          opacity: 0.62,
+        })
+      );
+      roofPlant.position.set(
+        roofStartX + index * roofPlantWidth,
+        baseY + buildingHeight + roofPlantHeight / 2 + worldFromFeet(0.4),
+        -buildingDepth * 0.2
+      );
+      layoutGroup.add(roofPlant);
+      buildingInteractionTargets.push(roofPlant);
+    }
+
+    const hallCount = model.halls.length;
+    const columns = scale.hallColumns;
+    const availableWidth = worldFromFeet(scale.availableHallFieldWidthFt);
+    const availableDepth = worldFromFeet(scale.availableHallFieldDepthFt);
+    const cellWidth = worldFromFeet(scale.hallCellWidthFt);
+    const cellDepth = worldFromFeet(scale.hallCellDepthFt);
+    const hallInset = clamp01(containment.hallInset * 0.65 + lerp(0.005, 0.025, hallsNorm));
+    const hallWidth = worldFromFeet(scale.hallWidthFt * (1 - hallInset * 0.06));
+    const hallDepth = worldFromFeet(scale.hallDepthFt * (1 - hallInset * 0.06));
+    const hallY = baseY + hallHeight / 2;
+    const hallBaseOpacity = lerp(0.5, 0.8, densityNorm);
+    const hallBaseEmissive = Math.min(
+      0.36,
+      lerp(0.1, 0.24, pueNorm) + lerp(0.03, 0.1, densityNorm)
+    );
+
+    const entities: InteractiveEntity[] = [];
+    const hallAirTapPoints: Array<{ point: THREE.Vector3; entityKey: string }> = [];
+    const hallLiquidTapPoints: Array<{ point: THREE.Vector3; entityKey: string }> = [];
+    const registerEntity = (entity: InteractiveEntity, targets: THREE.Object3D[]) => {
+      entities.push(entity);
+      entityByKeyRef.current.set(entity.key, entity);
+
+      targets.forEach((target) => {
+        raycastTargetsRef.current.push(target);
+        objectToEntityKeyRef.current.set(target.uuid, entity.key);
+      });
+    };
+
+    model.halls.forEach((hall, index) => {
+      const row = Math.floor(index / columns);
+      const col = index % columns;
+      const hallsBeforeRow = row * columns;
+      const hallsRemaining = hallCount - hallsBeforeRow;
+      const hallsInRow = Math.min(columns, hallsRemaining);
+      const rowPaddingCells = (columns - hallsInRow) / 2;
+      const x = -availableWidth / 2 + (rowPaddingCells + col + 0.5) * cellWidth;
+      const z = -availableDepth / 2 + cellDepth / 2 + row * cellDepth;
+      const hallId = hall.id;
+      const hallEntityKey = makeEntityKey("hall", hallId);
+      const airTapPoint = new THREE.Vector3(x, hallY + hallHeight * 0.36, z);
+      const liquidTapPoint = new THREE.Vector3(x - hallWidth * 0.42, hallY + hallHeight * 0.22, z);
+      const hallInteractionTargets: THREE.Object3D[] = [];
+
+      const hallBaseColor = blendHex(palette.hall, efficiencyAccent, lerp(0.06, 0.22, pueNorm));
+      const hallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(hallWidth, hallHeight, hallDepth),
+        new THREE.MeshStandardMaterial({
+          color: hallBaseColor,
+          emissive: tintHex(hallBaseColor, -0.38),
+          emissiveIntensity: hallBaseEmissive,
+          roughness: 0.52,
+          metalness: 0.05,
+          transparent: true,
+          opacity: hallBaseOpacity,
+        })
+      );
+      hallMesh.position.set(x, hallY, z);
+      layoutGroup.add(hallMesh);
+      hallInteractionTargets.push(hallMesh);
+
+      const hallEdges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(hallMesh.geometry),
+        new THREE.LineBasicMaterial({
+          color: palette.hallEdge,
+          transparent: true,
+          opacity: lerp(0.32, 0.6, densityNorm),
+        })
+      );
+      hallEdges.position.copy(hallMesh.position);
+      layoutGroup.add(hallEdges);
+      hallInteractionTargets.push(hallEdges);
+
+      const utilization = hall.capacity > 0 ? clamp01(hall.rackCount / hall.capacity) : 0;
+      const rowBars = Math.max(1, Math.min(6, hall.packing.rowCount));
+      const rowBandWidth = hallWidth * 0.74;
+      const rowBarWidth = Math.max(0.1, (rowBandWidth / rowBars) * 0.7);
+      const rowBarHeight = hallHeight * lerp(0.22, 0.68, densityNorm) * lerp(0.5, 1, utilization);
+      const rowBarDepth = hallDepth * lerp(0.3, 0.86, utilization);
+      const rowStartX = x - ((rowBars - 1) * rowBarWidth) / 2;
+      const rowY = baseY + rowBarHeight / 2 + 0.04;
+
+      for (let rowIndex = 0; rowIndex < rowBars; rowIndex += 1) {
+        const bar = new THREE.Mesh(
+          new THREE.BoxGeometry(rowBarWidth, rowBarHeight, rowBarDepth),
+          new THREE.MeshStandardMaterial({
+            color: blendHex(hallBaseColor, efficiencyAccent, 0.12 + utilization * 0.2),
+            emissive: blendHex(0x0b1726, efficiencyAccent, 0.22 + utilization * 0.22),
+            emissiveIntensity: 0.16 + densityNorm * 0.18,
+            roughness: 0.36,
+            metalness: 0.14,
+            transparent: true,
+            opacity: 0.5 + utilization * 0.25,
+          })
+        );
+        bar.position.set(rowStartX + rowIndex * rowBarWidth, rowY, z);
+        layoutGroup.add(bar);
+        hallInteractionTargets.push(bar);
+      }
+
+      if (params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid") {
+        const ductCount = params.coolingType === "Air-Cooled" ? 2 : 1;
+        for (let ductIndex = 0; ductIndex < ductCount; ductIndex += 1) {
+          const duct = new THREE.Mesh(
+            new THREE.BoxGeometry(hallWidth * 0.88, hallHeight * 0.08, hallDepth * 0.14),
+            new THREE.MeshStandardMaterial({
+              color: palette.flowAir,
+              emissive: tintHex(palette.flowAir, -0.12),
+              emissiveIntensity: 0.2,
+              roughness: 0.32,
+              metalness: 0.22,
+              transparent: true,
+              opacity: 0.45,
+            })
+          );
+          const zOffset = ductCount === 1 ? 0 : ductIndex === 0 ? -hallDepth * 0.2 : hallDepth * 0.2;
+          duct.position.set(x, hallY + hallHeight * 0.34, z + zOffset);
+          layoutGroup.add(duct);
+          hallInteractionTargets.push(duct);
+        }
+      }
+
+      if (params.coolingType === "DLC" || params.coolingType === "Hybrid") {
+        const manifold = new THREE.Mesh(
+          new THREE.CylinderGeometry(hallHeight * 0.035, hallHeight * 0.035, hallDepth * 0.88, 8),
+          new THREE.MeshStandardMaterial({
+            color: palette.flowLiquid,
+            emissive: tintHex(palette.flowLiquid, -0.1),
+            emissiveIntensity: 0.22,
+            roughness: 0.28,
+            metalness: 0.28,
+            transparent: true,
+            opacity: 0.56,
+          })
+        );
+        manifold.rotation.x = Math.PI / 2;
+        manifold.position.set(x - hallWidth * 0.42, hallY + hallHeight * 0.22, z);
+        layoutGroup.add(manifold);
+        hallInteractionTargets.push(manifold);
+      }
+
+      if (containment.hotLane) {
+        const hotLane = new THREE.Mesh(
+          new THREE.BoxGeometry(hallWidth * 0.16, hallHeight * 0.05, hallDepth * 0.9),
+          new THREE.MeshStandardMaterial({
+            color: palette.containmentHot,
+            emissive: tintHex(palette.containmentHot, -0.22),
+            emissiveIntensity: 0.3,
+            roughness: 0.35,
+            metalness: 0.15,
+            transparent: true,
+            opacity: 0.42,
+          })
+        );
+        hotLane.position.set(x, baseY + hallHeight * 0.06, z);
+        layoutGroup.add(hotLane);
+        hallInteractionTargets.push(hotLane);
+      }
+
+      if (containment.coldLane) {
+        const laneOffset = hallWidth * 0.28;
+        for (const direction of [-1, 1]) {
+          const coldLane = new THREE.Mesh(
+            new THREE.BoxGeometry(hallWidth * 0.1, hallHeight * 0.04, hallDepth * 0.9),
+            new THREE.MeshStandardMaterial({
+              color: palette.containmentCold,
+              emissive: tintHex(palette.containmentCold, -0.2),
+              emissiveIntensity: 0.22,
+              roughness: 0.32,
+              metalness: 0.12,
+              transparent: true,
+              opacity: 0.4,
+            })
+          );
+          coldLane.position.set(x + laneOffset * direction, baseY + hallHeight * 0.05, z);
+          layoutGroup.add(coldLane);
+          hallInteractionTargets.push(coldLane);
+        }
+      }
+
+      if (containment.fullEnclosure) {
+        const capHeight = Math.max(worldFromFeet(0.6), hallHeight * 0.12);
+        const cap = new THREE.Mesh(
+          new THREE.BoxGeometry(hallWidth * 0.98, capHeight, hallDepth * 0.98),
+          new THREE.MeshStandardMaterial({
+            color: blendHex(palette.containmentCold, 0xffffff, 0.2),
+            emissive: tintHex(palette.containmentCold, -0.2),
+            emissiveIntensity: 0.25,
+            roughness: 0.36,
+            metalness: 0.18,
+            transparent: true,
+            opacity: 0.3,
+          })
+        );
+        cap.position.set(x, hallY + hallHeight / 2 - capHeight / 2, z);
+        layoutGroup.add(cap);
+        hallInteractionTargets.push(cap);
+      }
+
+      const hallProfile = createVisualProfile(hallBaseColor, hallBaseOpacity, hallBaseEmissive);
+      const entity: InteractiveEntity = {
+        key: hallEntityKey,
+        mesh: hallMesh,
+        type: "hall",
+        id: hallId,
+        profile: hallProfile,
+      };
+
+      registerEntity(entity, hallInteractionTargets);
+      hallAirTapPoints.push({ point: airTapPoint, entityKey: hallEntityKey });
+      hallLiquidTapPoints.push({ point: liquidTapPoint, entityKey: hallEntityKey });
+    });
+
+    const coolingPlantX = buildingWidth / 2 + supportBandX * 0.64;
+    const airNetworkEnabled = params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid";
+    const liquidNetworkEnabled = params.coolingType === "DLC" || params.coolingType === "Hybrid";
+
+    if (airNetworkEnabled) {
+      const trunkY = hallY + hallHeight * 0.52;
+      const supplyZ = -hallFieldDepth / 2 - hallDepth * 0.62;
+      const returnZ = hallFieldDepth / 2 + hallDepth * 0.62;
+      const trunkStartX = -hallFieldWidth / 2;
+      const trunkEndX = hallFieldWidth / 2;
+      const airRadius = Math.max(worldFromFeet(0.45), hallHeight * 0.03);
+
+      const airSupplyTrunk = createPipeSegment(
+        new THREE.Vector3(trunkStartX, trunkY, supplyZ),
+        new THREE.Vector3(trunkEndX, trunkY, supplyZ),
+        airRadius,
+        {
+          color: palette.flowAir,
+          emissive: tintHex(palette.flowAir, -0.16),
+          emissiveIntensity: 0.2,
+          roughness: 0.3,
+          metalness: 0.3,
+          transparent: true,
+          opacity: 0.56,
+        }
+      );
+      if (airSupplyTrunk) {
+        layoutGroup.add(airSupplyTrunk);
+        buildingInteractionTargets.push(airSupplyTrunk);
+      }
+
+      const airReturnTrunk = createPipeSegment(
+        new THREE.Vector3(trunkStartX, trunkY, returnZ),
+        new THREE.Vector3(trunkEndX, trunkY, returnZ),
+        airRadius * 0.92,
+        {
+          color: tintHex(palette.flowAir, 0.12),
+          emissive: tintHex(palette.flowAir, -0.08),
+          emissiveIntensity: 0.18,
+          roughness: 0.34,
+          metalness: 0.24,
+          transparent: true,
+          opacity: 0.48,
+        }
+      );
+      if (airReturnTrunk) {
+        layoutGroup.add(airReturnTrunk);
+        buildingInteractionTargets.push(airReturnTrunk);
+      }
+
+      hallAirTapPoints.forEach(({ point: tapPoint, entityKey }) => {
+        const branchStart = new THREE.Vector3(tapPoint.x, trunkY, supplyZ);
+        const branchEnd = new THREE.Vector3(tapPoint.x, trunkY, tapPoint.z);
+        const dropEnd = new THREE.Vector3(tapPoint.x, tapPoint.y, tapPoint.z);
+
+        const branch = createPipeSegment(branchStart, branchEnd, airRadius * 0.72, {
+          color: palette.flowAir,
+          emissive: tintHex(palette.flowAir, -0.14),
+          emissiveIntensity: 0.2,
+          roughness: 0.34,
+          metalness: 0.24,
+          transparent: true,
+          opacity: 0.5,
+        });
+        if (branch) {
+          layoutGroup.add(branch);
+          raycastTargetsRef.current.push(branch);
+          objectToEntityKeyRef.current.set(branch.uuid, entityKey);
+        }
+
+        const drop = createPipeSegment(branchEnd, dropEnd, airRadius * 0.64, {
+          color: tintHex(palette.flowAir, 0.05),
+          emissive: tintHex(palette.flowAir, -0.12),
+          emissiveIntensity: 0.18,
+          roughness: 0.34,
+          metalness: 0.24,
+          transparent: true,
+          opacity: 0.48,
+        });
+        if (drop) {
+          layoutGroup.add(drop);
+          raycastTargetsRef.current.push(drop);
+          objectToEntityKeyRef.current.set(drop.uuid, entityKey);
+        }
+      });
+
+      const airPlant = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          worldFromFeet(lerp(10, 16, pueNorm)),
+          worldFromFeet(lerp(7, 10, pueNorm)),
+          worldFromFeet(lerp(9, 14, pueNorm))
+        ),
+        new THREE.MeshStandardMaterial({
+          color: blendHex(0x334155, palette.flowAir, 0.35),
+          emissive: tintHex(palette.flowAir, -0.2),
+          emissiveIntensity: 0.2,
+          roughness: 0.38,
+          metalness: 0.26,
+          transparent: true,
+          opacity: 0.7,
+        })
+      );
+      const airPlantWidth = worldFromFeet(lerp(10, 16, pueNorm));
+      const airPlantHeight = worldFromFeet(lerp(7, 10, pueNorm));
+      airPlant.position.set(coolingPlantX + airPlantWidth * 0.92, baseY + airPlantHeight / 2, supplyZ);
+      layoutGroup.add(airPlant);
+      buildingInteractionTargets.push(airPlant);
+
+      const plantToTrunk = createPipeSegment(
+        new THREE.Vector3(coolingPlantX + worldFromFeet(5), baseY + worldFromFeet(7), supplyZ),
+        new THREE.Vector3(trunkEndX, trunkY, supplyZ),
+        airRadius * 0.86,
+        {
+          color: palette.flowAir,
+          emissive: tintHex(palette.flowAir, -0.16),
+          emissiveIntensity: 0.2,
+          roughness: 0.3,
+          metalness: 0.3,
+          transparent: true,
+          opacity: 0.54,
+        }
+      );
+      if (plantToTrunk) {
+        layoutGroup.add(plantToTrunk);
+        buildingInteractionTargets.push(plantToTrunk);
+      }
+    }
+
+    if (liquidNetworkEnabled) {
+      const headerY = hallY + hallHeight * 0.24;
+      const headerX = hallFieldWidth / 2 + hallWidth * 0.45;
+      const supplyX = headerX;
+      const returnX = headerX + worldFromFeet(3);
+      const liquidRadius = Math.max(worldFromFeet(0.32), hallHeight * 0.022);
+
+      const supplyHeader = createPipeSegment(
+        new THREE.Vector3(supplyX, headerY, -hallFieldDepth / 2),
+        new THREE.Vector3(supplyX, headerY, hallFieldDepth / 2),
+        liquidRadius,
+        {
+          color: palette.flowLiquid,
+          emissive: tintHex(palette.flowLiquid, -0.12),
+          emissiveIntensity: 0.24,
+          roughness: 0.26,
+          metalness: 0.32,
+          transparent: true,
+          opacity: 0.62,
+        }
+      );
+      if (supplyHeader) {
+        layoutGroup.add(supplyHeader);
+        buildingInteractionTargets.push(supplyHeader);
+      }
+
+      const returnHeader = createPipeSegment(
+        new THREE.Vector3(returnX, headerY, -hallFieldDepth / 2),
+        new THREE.Vector3(returnX, headerY, hallFieldDepth / 2),
+        liquidRadius * 0.92,
+        {
+          color: tintHex(palette.flowLiquid, 0.12),
+          emissive: tintHex(palette.flowLiquid, -0.08),
+          emissiveIntensity: 0.22,
+          roughness: 0.28,
+          metalness: 0.3,
+          transparent: true,
+          opacity: 0.56,
+        }
+      );
+      if (returnHeader) {
+        layoutGroup.add(returnHeader);
+        buildingInteractionTargets.push(returnHeader);
+      }
+
+      hallLiquidTapPoints.forEach(({ point: tapPoint, entityKey }) => {
+        const branchSupplyStart = new THREE.Vector3(supplyX, tapPoint.y, tapPoint.z);
+        const branchReturnStart = new THREE.Vector3(returnX, tapPoint.y, tapPoint.z);
+
+        const supplyBranch = createPipeSegment(branchSupplyStart, tapPoint, liquidRadius * 0.72, {
+          color: palette.flowLiquid,
+          emissive: tintHex(palette.flowLiquid, -0.12),
+          emissiveIntensity: 0.24,
+          roughness: 0.28,
+          metalness: 0.3,
+          transparent: true,
+          opacity: 0.58,
+        });
+        if (supplyBranch) {
+          layoutGroup.add(supplyBranch);
+          raycastTargetsRef.current.push(supplyBranch);
+          objectToEntityKeyRef.current.set(supplyBranch.uuid, entityKey);
+        }
+
+        const returnBranch = createPipeSegment(
+          new THREE.Vector3(tapPoint.x + liquidRadius * 1.8, tapPoint.y - liquidRadius * 1.5, tapPoint.z),
+          branchReturnStart,
+          liquidRadius * 0.6,
+          {
+            color: tintHex(palette.flowLiquid, 0.12),
+            emissive: tintHex(palette.flowLiquid, -0.06),
+            emissiveIntensity: 0.2,
+            roughness: 0.28,
+            metalness: 0.28,
+            transparent: true,
+            opacity: 0.52,
+          }
+        );
+        if (returnBranch) {
+          layoutGroup.add(returnBranch);
+          raycastTargetsRef.current.push(returnBranch);
+          objectToEntityKeyRef.current.set(returnBranch.uuid, entityKey);
+        }
+      });
+
+      const pumpSkid = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          worldFromFeet(11),
+          worldFromFeet(8),
+          worldFromFeet(15)
+        ),
+        new THREE.MeshStandardMaterial({
+          color: blendHex(0x334155, palette.flowLiquid, 0.42),
+          emissive: tintHex(palette.flowLiquid, -0.18),
+          emissiveIntensity: 0.24,
+          roughness: 0.34,
+          metalness: 0.24,
+          transparent: true,
+          opacity: 0.72,
+        })
+      );
+      pumpSkid.position.set(returnX + worldFromFeet(6), baseY + worldFromFeet(4), 0);
+      layoutGroup.add(pumpSkid);
+      buildingInteractionTargets.push(pumpSkid);
+    }
+
+    const redundancy = getRedundancyLayout(params.redundancy, buildingWidthFt, buildingDepthFt);
+    const utilityHeight = worldFromFeet(lerp(8, 20, criticalNorm) + lerp(1, 7, pueNorm));
+    const utilityWidth = worldFromFeet(lerp(9, 20, criticalNorm));
+    const utilityDepth = worldFromFeet(lerp(8, 16, pueNorm));
+    const pathColor = blendHex(redundancy.color, palette.shellEdge, 0.2);
+
+    redundancy.modulePositions.forEach((position) => {
+      const moduleX = worldFromFeet(position.x);
+      const moduleZ = worldFromFeet(position.z);
+
+      const module = new THREE.Mesh(
+        new THREE.BoxGeometry(utilityWidth, utilityHeight, utilityDepth),
+        new THREE.MeshStandardMaterial({
+          color: redundancy.color,
+          emissive: tintHex(redundancy.color, -0.3),
+          emissiveIntensity: 0.2,
+          roughness: 0.46,
+          metalness: 0.18,
+          transparent: true,
+          opacity: 0.42,
+        })
+      );
+      module.position.set(moduleX, baseY + utilityHeight / 2, moduleZ);
+      layoutGroup.add(module);
+      buildingInteractionTargets.push(module);
+
+      const target = new THREE.Vector3(
+        Math.sign(position.x) * worldFromFeet(Math.max(2, buildingWidthFt * 0.18)),
+        baseY + buildingHeight * 0.38,
+        Math.sign(position.z) * worldFromFeet(Math.max(2, buildingDepthFt / 2 - 2.2))
+      );
+      const points = [new THREE.Vector3(moduleX, baseY + utilityHeight * 0.8, moduleZ), target];
+
+      const path = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(points),
+        new THREE.LineBasicMaterial({
+          color: pathColor,
+          transparent: true,
+          opacity: 0.68,
+        })
+      );
+      layoutGroup.add(path);
+      buildingInteractionTargets.push(path);
+
+      if (redundancy.dualPaths) {
+        const backupTarget = target.clone();
+        backupTarget.y += worldFromFeet(2.6);
+        backupTarget.x += position.x >= 0 ? -worldFromFeet(5.2) : worldFromFeet(5.2);
+        const backupPath = new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(moduleX, baseY + utilityHeight * 0.72, moduleZ),
+            backupTarget,
+          ]),
+          new THREE.LineBasicMaterial({
+            color: tintHex(pathColor, 0.15),
+            transparent: true,
+            opacity: 0.64,
+          })
+        );
+        layoutGroup.add(backupPath);
+        buildingInteractionTargets.push(backupPath);
+      }
+    });
+
+    const buildingProfile = createVisualProfile(shellBaseColor, shellOpacity, shellEmissive);
+    const buildingEntity: InteractiveEntity = {
+      key: makeEntityKey("building", "B-01"),
+      mesh: buildingMesh,
+      type: "building",
+      id: "B-01",
+      profile: buildingProfile,
+    };
+    registerEntity(buildingEntity, buildingInteractionTargets);
+
+    disableDepthWriteForTransparentMaterials(layoutGroup);
+
+    interactiveRef.current = entities;
+
+    const bounds = new THREE.Box3().setFromObject(layoutGroup);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const radius = Math.max(worldFromFeet(30), size.length() * 0.52);
+
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    const aspect = Math.max(0.1, camera.aspect || 1);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+    const fitDistanceVertical = radius / Math.sin(verticalFov / 2);
+    const fitDistanceHorizontal = radius / Math.sin(horizontalFov / 2);
+    const fitDistance = Math.max(fitDistanceVertical, fitDistanceHorizontal) * 1.08;
+
+    const depthBias = clamp01((buildingDepth - buildingWidth) / Math.max(buildingDepth, buildingWidth));
+    const viewDirection = new THREE.Vector3(0.78 - depthBias * 0.16, 0.58, 0.74 + depthBias * 0.12)
+      .normalize();
+
+    camera.position.copy(center).addScaledVector(viewDirection, fitDistance);
+    camera.near = Math.max(0.1, fitDistance * 0.03);
+    camera.far = Math.max(500, fitDistance + radius * 6);
+    camera.lookAt(center.x, center.y + size.y * 0.12, center.z);
+    camera.updateProjectionMatrix();
+
+    const footprintSpan = Math.max(size.x, size.z);
+    const floorSize = Math.max(FLOOR_SIZE, footprintSpan * 2.8);
+    const floor = floorRef.current;
+    if (floor) {
+      const floorScale = floorSize / FLOOR_SIZE;
+      floor.scale.set(floorScale, floorScale, 1);
+      floor.position.set(center.x, baseY - worldFromFeet(0.2), center.z);
+    }
+
+    const grid = gridRef.current;
+    if (grid) {
+      const gridScale = floorSize / FLOOR_SIZE;
+      grid.scale.set(gridScale, 1, gridScale);
+      grid.position.set(center.x, baseY - worldFromFeet(0.08), center.z);
+    }
+
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.near = Math.max(30, fitDistance * 0.55);
+      scene.fog.far = Math.max(260, fitDistance + radius * 4.5);
+    }
+
+    applyVisualStateRef.current();
+    renderSceneRef.current();
+  }, [model, params]);
+
+  return <div ref={mountRef} className="viewport" aria-label="3D data center viewport" />;
 }

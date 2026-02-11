@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { IconButton } from "./IconButton";
 
 export type ViewMode = "orbit" | "pan";
@@ -16,6 +16,41 @@ export function BottomControls({
   onViewModeChange,
   onResetCamera,
 }: BottomControlsProps) {
+  const [isMinimized, setIsMinimized] = useState(false);
+
+  if (isMinimized) {
+    return (
+      <nav className="controls-bottom controls-bottom-minimal" aria-label="View and camera controls minimized">
+        <button
+          type="button"
+          className="panel-minimal-toggle"
+          onClick={() => setIsMinimized(false)}
+          aria-label="Expand camera controls"
+          title="Expand camera controls"
+          data-tooltip="Expand camera controls"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M4 6h5" />
+            <path d="M15 6h5" />
+            <circle cx="12" cy="6" r="2" />
+            <path d="M4 12h9" />
+            <path d="M19 12h1" />
+            <circle cx="16" cy="12" r="2" />
+            <path d="M4 18h1" />
+            <path d="M9 18h11" />
+            <circle cx="6" cy="18" r="2" />
+          </svg>
+        </button>
+      </nav>
+    );
+  }
+
   return (
     <nav className="controls-bottom" aria-label="View and camera controls">
       <IconButton
@@ -42,12 +77,24 @@ export function BottomControls({
           <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" />
         </svg>
       </IconButton>
-      <div style={{ width: "1px", background: "#444", margin: "0 4px" }} />
+      <div className="controls-bottom-divider" aria-hidden="true" />
       <IconButton title="Render Settings">
         <svg viewBox="0 0 24 24">
           <path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z" />
         </svg>
       </IconButton>
+      <button
+        type="button"
+        className="inspector-action-btn controls-bottom-collapse"
+        onClick={() => setIsMinimized(true)}
+        aria-label="Minimize camera controls"
+        title="Minimize controls"
+        data-tooltip="Minimize controls"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 11h14v2H5z" />
+        </svg>
+      </button>
     </nav>
   );
 }

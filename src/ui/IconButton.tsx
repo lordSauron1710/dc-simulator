@@ -16,12 +16,15 @@ export function IconButton({
   onClick,
 }: IconButtonProps) {
   return (
-    <div
+    <button
+      type="button"
       className={`icon-btn ${isActive ? "active" : ""}`}
       title={title}
+      aria-label={title}
+      data-tooltip={title}
       onClick={onClick}
     >
       {children}
-    </div>
+    </button>
   );
 }

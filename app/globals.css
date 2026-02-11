@@ -520,27 +520,104 @@ body {
 .controls-bottom {
   pointer-events: auto;
   flex-shrink: 0;
-  width: 260px;
+  width: auto;
+  max-width: calc(100vw - 24px);
   background-color: var(--bg-panel-glass);
   backdrop-filter: blur(16px);
   border-radius: var(--radius-lg);
-  padding: 4px;
+  padding: 6px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
+.controls-bottom-minimal {
+  width: auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  padding: 0;
+}
+
+.controls-bottom-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.controls-bottom-collapse {
+  width: 26px;
+  height: 26px;
+  margin-left: 1px;
+  flex-shrink: 0;
+}
+
+.controls-bottom-collapse svg {
+  width: 13px;
+  height: 13px;
+}
+
+.controls-bottom button[data-tooltip],
+.controls-bottom-minimal button[data-tooltip] {
+  position: relative;
+}
+
+.controls-bottom button[data-tooltip]:hover::after,
+.controls-bottom button[data-tooltip]:focus-visible::after,
+.controls-bottom-minimal button[data-tooltip]:hover::after,
+.controls-bottom-minimal button[data-tooltip]:focus-visible::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 16, 28, 0.94);
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  color: #dbeafe;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.controls-bottom button[data-tooltip]:hover::before,
+.controls-bottom button[data-tooltip]:focus-visible::before,
+.controls-bottom-minimal button[data-tooltip]:hover::before,
+.controls-bottom-minimal button[data-tooltip]:focus-visible::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 5px);
+  width: 6px;
+  height: 6px;
+  background: rgba(10, 16, 28, 0.94);
+  border-left: 1px solid rgba(125, 211, 252, 0.4);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.4);
+  transform: translateX(-50%) rotate(-45deg);
+  pointer-events: none;
+  z-index: 39;
+}
+
 .icon-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
   color: var(--text-secondary);
   cursor: pointer;
+  position: relative;
   transition: all 0.2s;
 }
 
@@ -555,8 +632,8 @@ body {
 }
 
 .icon-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   fill: currentColor;
 }
 

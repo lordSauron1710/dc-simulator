@@ -6,6 +6,7 @@ const END_CLEARANCE_FT = 4;
 const ROW_PITCH_FT = 10;
 const RACK_WIDTH_FT = 2;
 const TARGET_RACKS_PER_ROW = 18;
+const MODEL_CACHE_LIMIT = 48;
 
 export interface FacilityLoadSummary {
   criticalITMW: number;
@@ -73,6 +74,8 @@ interface PackedRows {
   rowCount: number;
 }
 
+const modelCache = new Map<string, DataCenterModel>();
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -96,6 +99,20 @@ function sanitizeParams(params: Params): Params {
     rackPowerDensity: clampMin(params.rackPowerDensity, 0.1),
     pue: clampMin(params.pue, 1),
   };
+}
+
+function createModelCacheKey(params: Params): string {
+  return [
+    params.criticalLoadMW.toFixed(4),
+    Math.round(params.whitespaceAreaSqFt).toString(),
+    Math.round(params.dataHalls).toString(),
+    params.whitespaceRatio.toFixed(4),
+    params.rackPowerDensity.toFixed(4),
+    params.redundancy,
+    params.pue.toFixed(4),
+    params.coolingType,
+    params.containment,
+  ].join("|");
 }
 
 function deriveHallGeometry(hallWhitespaceSqFt: number): HallGeometry {
@@ -200,6 +217,11 @@ function packRows(
  */
 export function computeDataCenter(inputParams: Params): DataCenterModel {
   const params = sanitizeParams(inputParams);
+  const cacheKey = createModelCacheKey(params);
+  const cached = modelCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
   const hallCount = params.dataHalls;
 
   const criticalITMW = params.criticalLoadMW;
@@ -267,7 +289,7 @@ export function computeDataCenter(inputParams: Params): DataCenterModel {
     };
   });
 
-  return {
+  const model: DataCenterModel = {
     facilityLoad: {
       criticalITMW: roundTo(criticalITMW, 2),
       totalFacilityMW: roundTo(totalFacilityMW, 2),
@@ -285,4 +307,14 @@ export function computeDataCenter(inputParams: Params): DataCenterModel {
     hallRackDistribution,
     halls,
   };
+
+  if (modelCache.size >= MODEL_CACHE_LIMIT) {
+    const oldestKey = modelCache.keys().next().value;
+    if (typeof oldestKey === "string") {
+      modelCache.delete(oldestKey);
+    }
+  }
+  modelCache.set(cacheKey, model);
+
+  return model;
 }

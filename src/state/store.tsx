@@ -7,6 +7,7 @@ import {
   patchParams,
   setSelection,
   setQuality,
+  setCutawayEnabled,
   setScrollFlowEnabled,
   setViewMode,
   setUI,
@@ -23,6 +24,7 @@ interface StoreContextValue {
   select: (selection: Selection) => void;
   setViewMode: (mode: ViewMode) => void;
   setQuality: (quality: RenderQuality) => void;
+  setCutawayEnabled: (enabled: boolean) => void;
   setScrollFlowEnabled: (enabled: boolean) => void;
   resetCamera: () => void;
   setDrawerOpen: (open: boolean) => void;
@@ -50,6 +52,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch(setQuality(quality));
   }, []);
 
+  const setCutawayEnabledAction = useCallback((enabled: boolean) => {
+    dispatch(setCutawayEnabled(enabled));
+  }, []);
+
   const setScrollFlowEnabledAction = useCallback((enabled: boolean) => {
     dispatch(setScrollFlowEnabled(enabled));
   }, []);
@@ -74,6 +80,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       select,
       setViewMode: setViewModeAction,
       setQuality: setQualityAction,
+      setCutawayEnabled: setCutawayEnabledAction,
       setScrollFlowEnabled: setScrollFlowEnabledAction,
       resetCamera,
       setDrawerOpen,
@@ -85,6 +92,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       select,
       setViewModeAction,
       setQualityAction,
+      setCutawayEnabledAction,
       setScrollFlowEnabledAction,
       resetCamera,
       setDrawerOpen,

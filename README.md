@@ -2,21 +2,22 @@
 
 Parameter-driven data center visualization sandbox with a Next.js dashboard, typed global state, and an interactive viewport.
 
-> **Current state:** Prompts 01-10 in `roadmap.md` are executed (project scaffold, UI shell, global store, parameter drawer, data model, Three.js foundation, hall geometry, procedural instanced racks, systems overlays, cooling + heat overlay).
+> **Current state:** Prompts 01-15 in `roadmap.md` are executed, including camera controls, performance pass (memoization + LOD), and polish features (cutaway mode, presets, URL-shareable state).
 
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
-[![Roadmap](https://img.shields.io/badge/Roadmap-01--10%20executed-blue)](roadmap.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-01--15%20executed-blue)](roadmap.md)
 
 ![DC Simulator UI](docs/screenshots/ui_demo.png)
 
 ## What it does
 
-- Provides a dark-canvas sandbox UI for exploring data center entities and rack-level selection.
+- Provides a dark-canvas sandbox UI for exploring data center entities with rack, hall, and building selection.
 - Exposes key facility, IT, and MEP parameters through sliders/dropdowns with immediate state updates.
 - Uses industry-aligned data center terminology (critical load, PUE, redundancy, containment).
 - Keeps model-facing inputs typed and centralized via a React Context + reducer store.
+- Includes cutaway mode, scenario presets, and copyable URL state for reproducible views.
 - Maintains a deployment-friendly Next.js setup with standard build/start commands.
 
 ## Architecture
@@ -25,7 +26,7 @@ Parameter-driven data center visualization sandbox with a Next.js dashboard, typ
 Next.js App Router page (/)
   -> StoreProvider (typed app state)
   -> ExplorerTree + ParamDrawer + SpecsPanel + BottomControls
-  -> Viewport (Three.js procedural building, halls, instanced racks, systems overlays, and thermal layers)
+  -> Viewport (Three.js procedural building, halls, instanced racks, overlays, thermal layers, cutaway, and scroll/orbit/pan camera controls)
 ```
 
 ## Repository subway map
@@ -71,9 +72,11 @@ dc-simulator/
 │   ├── state/
 │   │   ├── actions.ts
 │   │   ├── index.ts
+│   │   ├── presets.ts
 │   │   ├── reducer.ts
 │   │   ├── store.tsx
-│   │   └── types.ts
+│   │   ├── types.ts
+│   │   └── urlState.ts
 │   └── ui/
 │       ├── BottomControls.tsx
 │       ├── Dropdown.tsx
@@ -81,6 +84,7 @@ dc-simulator/
 │       ├── IconButton.tsx
 │       ├── InputField.tsx
 │       ├── ParamDrawer.tsx
+│       ├── PresetsPanel.tsx
 │       ├── Slider.tsx
 │       ├── SpecsPanel.tsx
 │       └── TreeItem.tsx
@@ -157,8 +161,8 @@ No project-specific environment variables are currently required.
 
 ## Roadmap status
 
-- Executed: Prompts 01-10.
-- Pending: Prompts 11-15 (camera tour, controls, performance pass, polish).
+- Executed: Prompts 01-15.
+- Pending: None in v0 roadmap.
 
 ## License
 

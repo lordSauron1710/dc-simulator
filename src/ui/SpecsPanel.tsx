@@ -266,7 +266,7 @@ function buildProfileRows(
 export function SpecsPanel() {
   const { state } = useStore();
   const { params, selection } = state;
-  const [view, setView] = useState<InspectorView>("full");
+  const [view, setView] = useState<InspectorView>("key");
   const model = useMemo(() => computeDataCenter(params), [params]);
 
   const totalRacks = model.rackCount;

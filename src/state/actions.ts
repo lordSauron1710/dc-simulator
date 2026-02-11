@@ -11,6 +11,7 @@ export type StoreAction =
   | { type: "SET_VIEW_MODE"; payload: ViewMode }
   | { type: "SET_QUALITY"; payload: RenderQuality }
   | { type: "SET_SCROLL_FLOW_ENABLED"; payload: boolean }
+  | { type: "SET_CUTAWAY_ENABLED"; payload: boolean }
   | { type: "SET_UI"; payload: Partial<UIState> }
   | { type: "TOGGLE_DRAWER" }
   | { type: "REQUEST_CAMERA_RESET" };
@@ -37,6 +38,10 @@ export function setQuality(quality: RenderQuality): StoreAction {
 
 export function setScrollFlowEnabled(enabled: boolean): StoreAction {
   return { type: "SET_SCROLL_FLOW_ENABLED", payload: enabled };
+}
+
+export function setCutawayEnabled(enabled: boolean): StoreAction {
+  return { type: "SET_CUTAWAY_ENABLED", payload: enabled };
 }
 
 export function setUI(payload: Partial<UIState>): StoreAction {

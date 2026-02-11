@@ -11,7 +11,10 @@ export {
   setParams,
   patchParams,
   setSelection,
+  setQuality,
+  setScrollFlowEnabled,
   setViewMode,
+  requestCameraReset,
   setUI,
   toggleDrawer,
 } from "./actions";
@@ -21,6 +24,7 @@ export type {
   Selection,
   SelectionType,
   ViewMode,
+  RenderQuality,
   UIState,
   Redundancy,
   CoolingType,

@@ -9,7 +9,7 @@ Parameter-driven data center visualization sandbox with a Next.js dashboard, typ
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![Roadmap](https://img.shields.io/badge/Roadmap-01--10%20executed-blue)](roadmap.md)
 
-![DC Simulator UI](docs/screenshots/dc-simulator-ui.png)
+![DC Simulator UI](docs/screenshots/ui_demo.png)
 
 ## What it does
 

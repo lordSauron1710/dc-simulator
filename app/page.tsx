@@ -8,7 +8,16 @@ import { ParamDrawer } from "@/ui/ParamDrawer";
 import { useStore } from "@/state";
 
 export default function SandboxPage() {
-  const { state, select, setViewMode, updateParams, toggleDrawer } = useStore();
+  const {
+    state,
+    select,
+    setViewMode,
+    setScrollFlowEnabled,
+    setQuality,
+    resetCamera,
+    updateParams,
+    toggleDrawer,
+  } = useStore();
 
   return (
     <>
@@ -36,7 +45,11 @@ export default function SandboxPage() {
           <BottomControls
             viewMode={state.viewMode}
             onViewModeChange={setViewMode}
-            onResetCamera={() => {}}
+            scrollFlowEnabled={state.ui.scrollFlowEnabled}
+            onScrollFlowChange={setScrollFlowEnabled}
+            quality={state.quality}
+            onQualityChange={setQuality}
+            onResetCamera={resetCamera}
           />
         </div>
       </div>

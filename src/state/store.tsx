@@ -1,13 +1,16 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useMemo, useReducer } from "react";
-import type { AppState, Params, Selection, ViewMode } from "./types";
+import type { AppState, Params, Selection, ViewMode, RenderQuality } from "./types";
 import type { StoreAction } from "./actions";
 import {
   patchParams,
   setSelection,
+  setQuality,
+  setScrollFlowEnabled,
   setViewMode,
   setUI,
+  requestCameraReset,
   toggleDrawer,
 } from "./actions";
 import { storeReducer, getInitialState } from "./reducer";
@@ -19,6 +22,9 @@ interface StoreContextValue {
   updateParams: (patch: Partial<Params>) => void;
   select: (selection: Selection) => void;
   setViewMode: (mode: ViewMode) => void;
+  setQuality: (quality: RenderQuality) => void;
+  setScrollFlowEnabled: (enabled: boolean) => void;
+  resetCamera: () => void;
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
 }
@@ -40,6 +46,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch(setViewMode(mode));
   }, []);
 
+  const setQualityAction = useCallback((quality: RenderQuality) => {
+    dispatch(setQuality(quality));
+  }, []);
+
+  const setScrollFlowEnabledAction = useCallback((enabled: boolean) => {
+    dispatch(setScrollFlowEnabled(enabled));
+  }, []);
+
+  const resetCamera = useCallback(() => {
+    dispatch(requestCameraReset());
+  }, []);
+
   const setDrawerOpen = useCallback((open: boolean) => {
     dispatch(setUI({ drawerOpen: open }));
   }, []);
@@ -55,6 +73,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateParams,
       select,
       setViewMode: setViewModeAction,
+      setQuality: setQualityAction,
+      setScrollFlowEnabled: setScrollFlowEnabledAction,
+      resetCamera,
       setDrawerOpen,
       toggleDrawer: toggleDrawerAction,
     }),
@@ -63,6 +84,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateParams,
       select,
       setViewModeAction,
+      setQualityAction,
+      setScrollFlowEnabledAction,
+      resetCamera,
       setDrawerOpen,
       toggleDrawerAction,
     ]

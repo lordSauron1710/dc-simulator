@@ -48,15 +48,19 @@ export interface Selection {
 }
 
 export type ViewMode = "orbit" | "pan";
+export type RenderQuality = "performance" | "balanced" | "quality";
 
 export interface UIState {
   drawerOpen: boolean;
+  cameraResetNonce: number;
+  scrollFlowEnabled: boolean;
 }
 
 export interface AppState {
   params: Params;
   selection: Selection;
   viewMode: ViewMode;
+  quality: RenderQuality;
   ui: UIState;
 }
 
@@ -91,11 +95,14 @@ export const DEFAULT_SELECTION: Selection = {
 
 export const DEFAULT_UI: UIState = {
   drawerOpen: true,
+  cameraResetNonce: 0,
+  scrollFlowEnabled: false,
 };
 
 export const DEFAULT_STATE: AppState = {
   params: DEFAULT_PARAMS,
   selection: DEFAULT_SELECTION,
   viewMode: "orbit",
+  quality: "balanced",
   ui: DEFAULT_UI,
 };

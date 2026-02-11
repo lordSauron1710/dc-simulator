@@ -194,6 +194,7 @@ Implement a scroll-based camera walkthrough with multiple focus sections.
 ---
 
 ## Prompt 12 — Spec panel binding
+<!-- EXECUTED -->
 
 **Prompt**  
 Bind spec panel content to selection and KPIs.
@@ -209,6 +210,7 @@ Bind spec panel content to selection and KPIs.
 ---
 
 ## Prompt 13 — Interaction controls
+<!-- EXECUTED -->
 
 **Prompt**  
 Implement orbit, pan, reset, and quality toggles.

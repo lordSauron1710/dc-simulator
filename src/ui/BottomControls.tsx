@@ -2,18 +2,39 @@
 
 import React, { useState } from "react";
 import { IconButton } from "./IconButton";
+import type { RenderQuality } from "@/state";
 
 export type ViewMode = "orbit" | "pan";
 
 export interface BottomControlsProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  scrollFlowEnabled: boolean;
+  onScrollFlowChange: (enabled: boolean) => void;
+  quality: RenderQuality;
+  onQualityChange: (quality: RenderQuality) => void;
   onResetCamera?: () => void;
 }
+
+const QUALITY_LABEL: Record<RenderQuality, string> = {
+  performance: "Performance",
+  balanced: "Balanced",
+  quality: "Quality",
+};
+
+const NEXT_QUALITY: Record<RenderQuality, RenderQuality> = {
+  performance: "balanced",
+  balanced: "quality",
+  quality: "performance",
+};
 
 export function BottomControls({
   viewMode,
   onViewModeChange,
+  scrollFlowEnabled,
+  onScrollFlowChange,
+  quality,
+  onQualityChange,
   onResetCamera,
 }: BottomControlsProps) {
   const [isMinimized, setIsMinimized] = useState(false);
@@ -54,6 +75,16 @@ export function BottomControls({
   return (
     <nav className="controls-bottom" aria-label="View and camera controls">
       <IconButton
+        title={`Scroll Flow: ${scrollFlowEnabled ? "On" : "Off"} (toggle)`}
+        isActive={scrollFlowEnabled}
+        onClick={() => onScrollFlowChange(!scrollFlowEnabled)}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M12 2l3 3h-2v6h-2V5H9l3-3zm0 20l-3-3h2v-6h2v6h2l-3 3z" />
+          <path d="M5 7h2v10H5zM17 7h2v10h-2z" />
+        </svg>
+      </IconButton>
+      <IconButton
         title="Orbit Mode"
         isActive={viewMode === "orbit"}
         onClick={() => onViewModeChange("orbit")}
@@ -78,7 +109,11 @@ export function BottomControls({
         </svg>
       </IconButton>
       <div className="controls-bottom-divider" aria-hidden="true" />
-      <IconButton title="Render Settings">
+      <IconButton
+        title={`Render Quality: ${QUALITY_LABEL[quality]} (toggle)`}
+        isActive={quality !== "balanced"}
+        onClick={() => onQualityChange(NEXT_QUALITY[quality])}
+      >
         <svg viewBox="0 0 24 24">
           <path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z" />
         </svg>

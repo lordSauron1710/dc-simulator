@@ -16,10 +16,22 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
       return { ...state, selection: action.payload };
     case "SET_VIEW_MODE":
       return { ...state, viewMode: action.payload };
+    case "SET_QUALITY":
+      return { ...state, quality: action.payload };
+    case "SET_SCROLL_FLOW_ENABLED":
+      return {
+        ...state,
+        ui: { ...state.ui, scrollFlowEnabled: action.payload },
+      };
     case "SET_UI":
       return { ...state, ui: { ...state.ui, ...action.payload } };
     case "TOGGLE_DRAWER":
       return { ...state, ui: { ...state.ui, drawerOpen: !state.ui.drawerOpen } };
+    case "REQUEST_CAMERA_RESET":
+      return {
+        ...state,
+        ui: { ...state.ui, cameraResetNonce: state.ui.cameraResetNonce + 1 },
+      };
     default:
       return state;
   }

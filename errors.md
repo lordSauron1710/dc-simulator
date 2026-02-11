@@ -68,6 +68,13 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Applied live `top/right` anchor styles from inspector bounds and moved guide sizing to the card itself so expanded/minimized guide states align directly beside inspector in every inspector view.
 - **Lesson:** If overlay alignment depends on runtime measurements, always bind measured values to DOM styles and avoid competing fixed layout offsets in CSS.
 
+### [Hover selection felt noisy due overlay geometry hit targets]
+
+- **Symptom:** Hover highlighting triggered while mousing over many secondary pipes/lines, which made selectable feedback feel cluttered.
+- **Root cause:** Numerous overlay geometries were registered in raycast targets and mapped to hall/building entities, so hover picked decorative systems instead of only core selectable bodies.
+- **Fix:** Restricted hover raycast mapping to core selectable geometry (rack instances, hall shells, building shell) and removed raycast registration from secondary routing branches/lines.
+- **Lesson:** Keep interaction hit proxies minimal and explicit; decorative geometry should usually not be interactive.
+
 ---
 
 ## State & params

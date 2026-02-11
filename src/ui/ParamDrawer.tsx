@@ -43,7 +43,13 @@ export function ParamDrawer({
 
   return (
     <div className={`param-drawer ${isOpen ? "open" : "closed"}`}>
-      <div className="param-drawer-header section-header" onClick={onToggle}>
+      <button
+        type="button"
+        className="param-drawer-header"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls="param-drawer-content"
+      >
         <span>PARAMETERS</span>
         <svg
           width="12"
@@ -58,9 +64,9 @@ export function ParamDrawer({
         >
           <path d="M1 3L5 7L9 3Z" />
         </svg>
-      </div>
+      </button>
 
-      <div className="param-drawer-content">
+      <div className="param-drawer-content" id="param-drawer-content">
         {/* Facility-level parameters */}
         <div className="param-section">
           <div className="param-section-title">Facility</div>

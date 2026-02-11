@@ -178,7 +178,7 @@ Add a thermal overlay driven by rack density and cooling mode.
 ---
 
 ## Prompt 11 — Scroll-driven camera tour
-<!-- IN PROGRESS -->
+<!-- EXECUTED -->
 
 **Prompt**  
 Implement a scroll-based camera walkthrough with multiple focus sections.

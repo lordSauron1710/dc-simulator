@@ -10,6 +10,12 @@ const MAX_PIXEL_RATIO = 2;
 const FOOT_TO_WORLD = 0.115;
 const FLOOR_SIZE = 280;
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+const TOUR_SCROLL_SENSITIVITY = 0.00055;
+const TOUR_DAMPING = 9.5;
+const ORBIT_DRAG_SPEED = 0.004;
+const PAN_DRAG_SPEED = 1.15;
+const ORBIT_PITCH_LIMIT = Math.PI * 0.43;
+const DRAG_THRESHOLD_SQ = 9;
 
 const PARAM_RANGES = {
   criticalLoadMW: { min: 0.5, max: 1000 },
@@ -129,7 +135,36 @@ interface CameraTourLayout {
   center: THREE.Vector3;
   radius: number;
   fitDistance: number;
+  near: number;
+  far: number;
   sections: CameraTourSection[];
+}
+
+interface CameraTourPose {
+  direction: THREE.Vector3;
+  target: THREE.Vector3;
+  distance: number;
+  sectionIndex: number;
+}
+
+interface CameraTourState {
+  layout: CameraTourLayout | null;
+  progress: number;
+  targetProgress: number;
+  orbitAzimuth: number;
+  orbitPolar: number;
+  panOffset: THREE.Vector3;
+  currentTarget: THREE.Vector3;
+  currentDirection: THREE.Vector3;
+  currentDistance: number;
+}
+
+interface CameraDragState {
+  pointerId: number | null;
+  lastX: number;
+  lastY: number;
+  moved: boolean;
+  suppressClick: boolean;
 }
 
 function disposeMaterial(material?: THREE.Material | THREE.Material[]): void {
@@ -190,6 +225,10 @@ function lerp(start: number, end: number, t: number): number {
   return start + (end - start) * t;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function blendHex(fromColor: number, toColor: number, amount: number): number {
   const from = new THREE.Color(fromColor);
   const to = new THREE.Color(toColor);
@@ -203,6 +242,94 @@ function average(values: number[]): number {
   }
   const total = values.reduce((sum, value) => sum + value, 0);
   return total / values.length;
+}
+
+function smoothstep(value: number): number {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function damp(current: number, target: number, lambda: number, deltaSeconds: number): number {
+  const amount = 1 - Math.exp(-lambda * Math.max(0, deltaSeconds));
+  return current + (target - current) * amount;
+}
+
+function computeCameraFitDistance(camera: THREE.PerspectiveCamera, radius: number): number {
+  const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+  const aspect = Math.max(0.1, camera.aspect || 1);
+  const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
+  const fitDistanceVertical = radius / Math.sin(verticalFov / 2);
+  const fitDistanceHorizontal = radius / Math.sin(horizontalFov / 2);
+  return Math.max(fitDistanceVertical, fitDistanceHorizontal) * 1.08;
+}
+
+function createCameraTourLayout(
+  center: THREE.Vector3,
+  size: THREE.Vector3,
+  radius: number,
+  fitDistance: number
+): CameraTourLayout {
+  return {
+    center: center.clone(),
+    radius,
+    fitDistance,
+    near: Math.max(0.1, fitDistance * 0.03),
+    far: Math.max(500, fitDistance + radius * 6),
+    sections: [
+      {
+        direction: new THREE.Vector3(0.78, 0.58, 0.74).normalize(),
+        distanceScale: 1.06,
+        lookOffset: new THREE.Vector3(0, size.y * 0.12, 0),
+      },
+      {
+        direction: new THREE.Vector3(0.34, 0.24, 1.12).normalize(),
+        distanceScale: 0.8,
+        lookOffset: new THREE.Vector3(0, size.y * 0.07, 0),
+      },
+      {
+        direction: new THREE.Vector3(-1.02, 0.34, 0.28).normalize(),
+        distanceScale: 0.92,
+        lookOffset: new THREE.Vector3(-size.x * 0.16, size.y * 0.12, 0),
+      },
+      {
+        direction: new THREE.Vector3(0.88, 0.44, -0.64).normalize(),
+        distanceScale: 0.9,
+        lookOffset: new THREE.Vector3(size.x * 0.14, size.y * 0.16, -size.z * 0.08),
+      },
+      {
+        direction: new THREE.Vector3(0.18, 1.08, 0.26).normalize(),
+        distanceScale: 0.72,
+        lookOffset: new THREE.Vector3(0, size.y * 0.16, 0),
+      },
+    ],
+  };
+}
+
+function sampleCameraTour(layout: CameraTourLayout, progress: number): CameraTourPose {
+  const sections = layout.sections;
+  const segmentCount = Math.max(1, sections.length - 1);
+  const scaledProgress = clamp01(progress) * segmentCount;
+  const segmentIndex = Math.min(segmentCount - 1, Math.floor(scaledProgress));
+  const segmentT = clamp01(scaledProgress - segmentIndex);
+  const emphasizedSegmentT = smoothstep(segmentT);
+  const current = sections[segmentIndex];
+  const next = sections[Math.min(sections.length - 1, segmentIndex + 1)];
+
+  const direction = current.direction.clone().lerp(next.direction, emphasizedSegmentT).normalize();
+  const distanceScale = lerp(current.distanceScale, next.distanceScale, emphasizedSegmentT);
+  const target = layout.center
+    .clone()
+    .add(current.lookOffset.clone().lerp(next.lookOffset, emphasizedSegmentT));
+
+  return {
+    direction,
+    target,
+    distance: layout.fitDistance * distanceScale,
+    sectionIndex:
+      emphasizedSegmentT < 0.5
+        ? segmentIndex
+        : Math.min(sections.length - 1, segmentIndex + 1),
+  };
 }
 
 function normalizeSceneParams(params: Params): ParamNorms {
@@ -660,6 +787,25 @@ export function Viewport() {
     selectedIndex: null,
   });
   const selectionRef = useRef(state.selection);
+  const viewModeRef = useRef(state.viewMode);
+  const cameraTourRef = useRef<CameraTourState>({
+    layout: null,
+    progress: 0,
+    targetProgress: 0,
+    orbitAzimuth: 0,
+    orbitPolar: 0,
+    panOffset: new THREE.Vector3(),
+    currentTarget: new THREE.Vector3(),
+    currentDirection: new THREE.Vector3(0.78, 0.58, 0.74).normalize(),
+    currentDistance: worldFromFeet(400),
+  });
+  const cameraDragRef = useRef<CameraDragState>({
+    pointerId: null,
+    lastX: 0,
+    lastY: 0,
+    moved: false,
+    suppressClick: false,
+  });
   const renderSceneRef = useRef<() => void>(() => {});
   const applyVisualStateRef = useRef<() => void>(() => {});
 
@@ -725,8 +871,107 @@ export function Viewport() {
     scene.add(layoutGroup);
     layoutGroupRef.current = layoutGroup;
 
+    let frameHandle: number | null = null;
+    let frameTimestamp = 0;
+    let needsRender = false;
+
+    const tourDirection = new THREE.Vector3();
+    const tourRight = new THREE.Vector3();
+    const tourTarget = new THREE.Vector3();
+    const tourCameraPosition = new THREE.Vector3();
+    const yawQuaternion = new THREE.Quaternion();
+    const pitchQuaternion = new THREE.Quaternion();
+
+    const updateCameraFromTour = (deltaSeconds: number): boolean => {
+      const tour = cameraTourRef.current;
+      if (!tour.layout) {
+        return false;
+      }
+
+      const nextProgress = damp(
+        tour.progress,
+        tour.targetProgress,
+        TOUR_DAMPING,
+        deltaSeconds
+      );
+      const resolvedProgress =
+        Math.abs(nextProgress - tour.targetProgress) < 0.00012
+          ? tour.targetProgress
+          : nextProgress;
+      let changed = Math.abs(resolvedProgress - tour.progress) > 0.00001;
+      tour.progress = resolvedProgress;
+
+      const pose = sampleCameraTour(tour.layout, tour.progress);
+      yawQuaternion.setFromAxisAngle(WORLD_UP, tour.orbitAzimuth);
+      tourDirection.copy(pose.direction).applyQuaternion(yawQuaternion).normalize();
+      tourRight.crossVectors(tourDirection, WORLD_UP);
+      if (tourRight.lengthSq() < 1e-6) {
+        tourRight.set(1, 0, 0);
+      } else {
+        tourRight.normalize();
+      }
+      pitchQuaternion.setFromAxisAngle(tourRight, tour.orbitPolar);
+      tourDirection.applyQuaternion(pitchQuaternion).normalize();
+
+      tourTarget.copy(pose.target).add(tour.panOffset);
+      tourCameraPosition.copy(tourTarget).addScaledVector(tourDirection, pose.distance);
+
+      if (
+        tour.currentTarget.distanceToSquared(tourTarget) > 1e-6 ||
+        tour.currentDirection.distanceToSquared(tourDirection) > 1e-6 ||
+        Math.abs(tour.currentDistance - pose.distance) > 0.0001
+      ) {
+        changed = true;
+      }
+
+      tour.currentTarget.copy(tourTarget);
+      tour.currentDirection.copy(tourDirection);
+      tour.currentDistance = pose.distance;
+
+      camera.position.copy(tourCameraPosition);
+      camera.lookAt(tourTarget);
+
+      const near = tour.layout.near;
+      const far = tour.layout.far;
+      if (Math.abs(camera.near - near) > 0.0001 || Math.abs(camera.far - far) > 0.0001) {
+        camera.near = near;
+        camera.far = far;
+        camera.updateProjectionMatrix();
+        changed = true;
+      }
+
+      return changed;
+    };
+
+    const tick = (timestamp: number) => {
+      const deltaSeconds =
+        frameTimestamp === 0 ? 1 / 60 : Math.min(0.05, (timestamp - frameTimestamp) / 1000);
+      frameTimestamp = timestamp;
+
+      const cameraChanged = updateCameraFromTour(deltaSeconds);
+      if (needsRender || cameraChanged) {
+        renderer.render(scene, camera);
+        needsRender = false;
+      }
+
+      const tour = cameraTourRef.current;
+      const progressAnimating = Math.abs(tour.targetProgress - tour.progress) > 0.00015;
+      const dragging = cameraDragRef.current.pointerId !== null;
+      if (needsRender || cameraChanged || progressAnimating || dragging) {
+        frameHandle = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      frameHandle = null;
+      frameTimestamp = 0;
+    };
+
     const renderScene = () => {
-      renderer.render(scene, camera);
+      needsRender = true;
+      if (frameHandle === null) {
+        frameTimestamp = 0;
+        frameHandle = window.requestAnimationFrame(tick);
+      }
     };
     renderSceneRef.current = renderScene;
 
@@ -826,11 +1071,21 @@ export function Viewport() {
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO));
       renderer.setSize(width, height, false);
+
+      const tour = cameraTourRef.current;
+      if (tour.layout) {
+        tour.layout.fitDistance = computeCameraFitDistance(camera, tour.layout.radius);
+        tour.layout.near = Math.max(0.1, tour.layout.fitDistance * 0.03);
+        tour.layout.far = Math.max(500, tour.layout.fitDistance + tour.layout.radius * 6);
+      }
+
       renderScene();
     };
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const panRight = new THREE.Vector3();
+    const panUp = new THREE.Vector3();
 
     const pickInteractive = (event: PointerEvent): HoverTarget | null => {
       const bounds = renderer.domElement.getBoundingClientRect();
@@ -893,7 +1148,101 @@ export function Viewport() {
       return bestTarget;
     };
 
+    const setPointerCursor = () => {
+      if (cameraDragRef.current.pointerId !== null) {
+        mountElement.style.cursor = "grabbing";
+        return;
+      }
+      mountElement.style.cursor = hoveredRef.current ? "pointer" : "default";
+    };
+
+    const applyCameraDrag = (deltaX: number, deltaY: number) => {
+      const tour = cameraTourRef.current;
+      if (!tour.layout) {
+        return;
+      }
+
+      if (viewModeRef.current === "pan") {
+        const viewportHeight = Math.max(1, mountElement.clientHeight);
+        const worldPerPixel =
+          ((2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) /
+            viewportHeight) *
+          tour.currentDistance *
+          PAN_DRAG_SPEED;
+
+        panRight.crossVectors(tour.currentDirection, WORLD_UP);
+        if (panRight.lengthSq() < 1e-6) {
+          panRight.set(1, 0, 0);
+        } else {
+          panRight.normalize();
+        }
+        panUp.crossVectors(panRight, tour.currentDirection).normalize();
+
+        tour.panOffset.addScaledVector(panRight, -deltaX * worldPerPixel);
+        tour.panOffset.addScaledVector(panUp, deltaY * worldPerPixel);
+
+        const maxPan = tour.layout.radius * 0.8;
+        if (tour.panOffset.length() > maxPan) {
+          tour.panOffset.setLength(maxPan);
+        }
+        return;
+      }
+
+      tour.orbitAzimuth -= deltaX * ORBIT_DRAG_SPEED;
+      tour.orbitPolar = clamp(
+        tour.orbitPolar - deltaY * ORBIT_DRAG_SPEED,
+        -ORBIT_PITCH_LIMIT,
+        ORBIT_PITCH_LIMIT
+      );
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      cameraDragRef.current.pointerId = event.pointerId;
+      cameraDragRef.current.lastX = event.clientX;
+      cameraDragRef.current.lastY = event.clientY;
+      cameraDragRef.current.moved = false;
+      cameraDragRef.current.suppressClick = false;
+      if (renderer.domElement.setPointerCapture) {
+        renderer.domElement.setPointerCapture(event.pointerId);
+      }
+      setPointerCursor();
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
+      const drag = cameraDragRef.current;
+      if (drag.pointerId === event.pointerId) {
+        const deltaX = event.clientX - drag.lastX;
+        const deltaY = event.clientY - drag.lastY;
+        drag.lastX = event.clientX;
+        drag.lastY = event.clientY;
+
+        if (deltaX === 0 && deltaY === 0) {
+          return;
+        }
+
+        const movementSq = deltaX * deltaX + deltaY * deltaY;
+        if (!drag.moved && movementSq >= DRAG_THRESHOLD_SQ) {
+          drag.moved = true;
+          drag.suppressClick = true;
+        }
+
+        if (!drag.moved) {
+          return;
+        }
+
+        applyCameraDrag(deltaX, deltaY);
+        renderScene();
+        return;
+      }
+
+      if (drag.pointerId !== null) {
+        return;
+      }
+
       const nextHover = pickInteractive(event);
       const previous = hoveredRef.current;
       if (sameHoverTarget(previous, nextHover)) {
@@ -901,24 +1250,51 @@ export function Viewport() {
       }
 
       hoveredRef.current = nextHover;
-      mountElement.style.cursor = nextHover ? "pointer" : "default";
+      setPointerCursor();
       applyVisualState();
       renderScene();
     };
 
+    const handlePointerRelease = (event: PointerEvent) => {
+      const drag = cameraDragRef.current;
+      if (drag.pointerId !== event.pointerId) {
+        return;
+      }
+
+      if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      }
+
+      drag.pointerId = null;
+      drag.lastX = 0;
+      drag.lastY = 0;
+      drag.moved = false;
+      setPointerCursor();
+      renderScene();
+    };
+
     const handlePointerLeave = () => {
+      if (cameraDragRef.current.pointerId !== null) {
+        return;
+      }
+
       if (!hoveredRef.current) {
-        mountElement.style.cursor = "default";
+        setPointerCursor();
         return;
       }
 
       hoveredRef.current = null;
-      mountElement.style.cursor = "default";
+      setPointerCursor();
       applyVisualState();
       renderScene();
     };
 
     const handleClick = (event: PointerEvent) => {
+      if (cameraDragRef.current.suppressClick) {
+        cameraDragRef.current.suppressClick = false;
+        return;
+      }
+
       const hit = pickInteractive(event);
       if (!hit) {
         return;
@@ -928,23 +1304,55 @@ export function Viewport() {
       renderScene();
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      const tour = cameraTourRef.current;
+      if (!tour.layout) {
+        return;
+      }
+
+      event.preventDefault();
+      const nextProgress = clamp01(
+        tour.targetProgress + event.deltaY * TOUR_SCROLL_SENSITIVITY
+      );
+      if (Math.abs(nextProgress - tour.targetProgress) < 0.00001) {
+        return;
+      }
+
+      tour.targetProgress = nextProgress;
+      renderScene();
+    };
+
     const resizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => resizeRenderer())
         : null;
 
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    renderer.domElement.addEventListener("pointerup", handlePointerRelease);
+    renderer.domElement.addEventListener("pointercancel", handlePointerRelease);
     renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
     renderer.domElement.addEventListener("click", handleClick);
+    renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     resizeRenderer();
     renderScene();
     window.addEventListener("resize", resizeRenderer);
     resizeObserver?.observe(mountElement);
 
     return () => {
+      if (frameHandle !== null) {
+        window.cancelAnimationFrame(frameHandle);
+        frameHandle = null;
+      }
+
+      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      renderer.domElement.removeEventListener("pointerup", handlePointerRelease);
+      renderer.domElement.removeEventListener("pointercancel", handlePointerRelease);
       renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
       renderer.domElement.removeEventListener("click", handleClick);
+      renderer.domElement.removeEventListener("wheel", handleWheel);
       window.removeEventListener("resize", resizeRenderer);
       resizeObserver?.disconnect();
       mountElement.style.cursor = "default";
@@ -974,6 +1382,24 @@ export function Viewport() {
       rackVisualStateRef.current = { hoveredIndex: null, selectedIndex: null };
       entityByKeyRef.current.clear();
       objectToEntityKeyRef.current.clear();
+      cameraTourRef.current = {
+        layout: null,
+        progress: 0,
+        targetProgress: 0,
+        orbitAzimuth: 0,
+        orbitPolar: 0,
+        panOffset: new THREE.Vector3(),
+        currentTarget: new THREE.Vector3(),
+        currentDirection: new THREE.Vector3(0.78, 0.58, 0.74).normalize(),
+        currentDistance: worldFromFeet(400),
+      };
+      cameraDragRef.current = {
+        pointerId: null,
+        lastX: 0,
+        lastY: 0,
+        moved: false,
+        suppressClick: false,
+      };
     };
   }, [select]);
 
@@ -2147,23 +2573,37 @@ export function Viewport() {
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
     const radius = Math.max(worldFromFeet(30), size.length() * 0.52);
-
-    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
-    const aspect = Math.max(0.1, camera.aspect || 1);
-    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * aspect);
-    const fitDistanceVertical = radius / Math.sin(verticalFov / 2);
-    const fitDistanceHorizontal = radius / Math.sin(horizontalFov / 2);
-    const fitDistance = Math.max(fitDistanceVertical, fitDistanceHorizontal) * 1.08;
-
-    const depthBias = clamp01((buildingDepth - buildingWidth) / Math.max(buildingDepth, buildingWidth));
-    const viewDirection = new THREE.Vector3(0.78 - depthBias * 0.16, 0.58, 0.74 + depthBias * 0.12)
+    const fitDistance = computeCameraFitDistance(camera, radius);
+    const cameraTourLayout = createCameraTourLayout(center, size, radius, fitDistance);
+    const depthBias = clamp01(
+      (buildingDepth - buildingWidth) / Math.max(buildingDepth, buildingWidth)
+    );
+    cameraTourLayout.sections[0].direction
+      .set(0.78 - depthBias * 0.16, 0.58, 0.74 + depthBias * 0.12)
+      .normalize();
+    cameraTourLayout.sections[3].direction
+      .set(0.88 - depthBias * 0.08, 0.44, -0.64 - depthBias * 0.16)
       .normalize();
 
-    camera.position.copy(center).addScaledVector(viewDirection, fitDistance);
-    camera.near = Math.max(0.1, fitDistance * 0.03);
-    camera.far = Math.max(500, fitDistance + radius * 6);
-    camera.lookAt(center.x, center.y + size.y * 0.12, center.z);
-    camera.updateProjectionMatrix();
+    const tour = cameraTourRef.current;
+    const previousLayout = tour.layout;
+    tour.layout = cameraTourLayout;
+    if (!previousLayout) {
+      tour.progress = 0;
+      tour.targetProgress = 0;
+      tour.orbitAzimuth = 0;
+      tour.orbitPolar = 0;
+      tour.panOffset.set(0, 0, 0);
+    } else {
+      const scaleRatio = cameraTourLayout.radius / Math.max(previousLayout.radius, 0.001);
+      tour.panOffset.multiplyScalar(clamp(scaleRatio, 0.4, 2.4));
+      tour.progress = clamp01(tour.progress);
+      tour.targetProgress = clamp01(tour.targetProgress);
+    }
+    const maxPan = cameraTourLayout.radius * 0.8;
+    if (tour.panOffset.length() > maxPan) {
+      tour.panOffset.setLength(maxPan);
+    }
 
     const footprintSpan = Math.max(size.x, size.z);
     const floorSize = Math.max(FLOOR_SIZE, footprintSpan * 2.8);
@@ -2195,6 +2635,10 @@ export function Viewport() {
     applyVisualStateRef.current();
     renderSceneRef.current();
   }, [state.selection]);
+
+  useEffect(() => {
+    viewModeRef.current = state.viewMode;
+  }, [state.viewMode]);
 
   return <div ref={mountRef} className="viewport" aria-label="3D data center viewport" />;
 }

@@ -11,6 +11,8 @@ export interface BottomControlsProps {
   onViewModeChange: (mode: ViewMode) => void;
   scrollFlowEnabled: boolean;
   onScrollFlowChange: (enabled: boolean) => void;
+  cutawayEnabled: boolean;
+  onCutawayChange: (enabled: boolean) => void;
   quality: RenderQuality;
   onQualityChange: (quality: RenderQuality) => void;
   onResetCamera?: () => void;
@@ -33,6 +35,8 @@ export function BottomControls({
   onViewModeChange,
   scrollFlowEnabled,
   onScrollFlowChange,
+  cutawayEnabled,
+  onCutawayChange,
   quality,
   onQualityChange,
   onResetCamera,
@@ -109,6 +113,15 @@ export function BottomControls({
         </svg>
       </IconButton>
       <div className="controls-bottom-divider" aria-hidden="true" />
+      <IconButton
+        title={`Cutaway Mode: ${cutawayEnabled ? "On" : "Off"} (toggle)`}
+        isActive={cutawayEnabled}
+        onClick={() => onCutawayChange(!cutawayEnabled)}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2 5.6 2.8L12 10.8 6.4 8 12 5.2Zm-6 4.4 5 2.5v6.4l-5-2.5V9.6Zm7 8.9V12l5-2.5v6.4l-5 2.5Z" />
+        </svg>
+      </IconButton>
       <IconButton
         title={`Render Quality: ${QUALITY_LABEL[quality]} (toggle)`}
         isActive={quality !== "balanced"}

@@ -13,14 +13,14 @@ const TOUR_SCROLL_SENSITIVITY = 0.00055;
 const TOUR_DAMPING = 9.5;
 const ORBIT_DRAG_SPEED = 0.004;
 const PAN_DRAG_SPEED = 1.15;
-const ORBIT_PITCH_LIMIT = Math.PI * 0.43;
 const DRAG_THRESHOLD_SQ = 9;
 const WHEEL_ZOOM_SENSITIVITY = 0.0016;
-const WHEEL_ZOOM_MIN_FACTOR = 0.38;
-const WHEEL_ZOOM_MAX_FACTOR = 2.4;
 const RACK_HOVER_FOCUS_DAMPING = 9.5;
 const RACK_HOVER_TARGET_DAMPING = 12;
 const RACK_HOVER_FOCUS_DISTANCE_SCALE = 0.52;
+const CUTAWAY_SHELL_OPACITY_SCALE = 0.28;
+const CUTAWAY_HALL_OPACITY_SCALE = 0.42;
+const CUTAWAY_EDGE_OPACITY_SCALE = 0.52;
 const QUALITY_PIXEL_RATIO_CAP: Record<RenderQuality, number> = {
   performance: 1,
   balanced: 1.5,
@@ -186,6 +186,15 @@ interface RackHoverFocusState {
   hasPoint: boolean;
 }
 
+interface CutawayEntry {
+  object: THREE.Object3D;
+  hideWhenCutaway: boolean;
+  opacityScale: number;
+  materials: Array<{ material: THREE.Material; baseOpacity: number }>;
+}
+
+type DetailTier = "high" | "medium" | "low";
+
 function disposeMaterial(material?: THREE.Material | THREE.Material[]): void {
   if (!material) {
     return;
@@ -227,6 +236,65 @@ function disableDepthWriteForTransparentMaterials(object: THREE.Object3D): void 
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function resolveDetailTier(rackCount: number, hallCount: number): DetailTier {
+  const complexityScore = rackCount + hallCount * 42;
+  if (complexityScore >= 2200) {
+    return "low";
+  }
+  if (complexityScore >= 900) {
+    return "medium";
+  }
+  return "high";
+}
+
+function limitDetailCount(base: number, detailTier: DetailTier, mediumCap: number, lowCap: number): number {
+  if (detailTier === "low") {
+    return Math.min(base, lowCap);
+  }
+  if (detailTier === "medium") {
+    return Math.min(base, mediumCap);
+  }
+  return base;
+}
+
+function resolveBranchStride(total: number, detailTier: DetailTier, mediumTarget: number, lowTarget: number): number {
+  if (total <= 0) {
+    return 1;
+  }
+  if (detailTier === "low") {
+    return Math.max(1, Math.ceil(total / lowTarget));
+  }
+  if (detailTier === "medium") {
+    return Math.max(1, Math.ceil(total / mediumTarget));
+  }
+  return 1;
+}
+
+function collectOpacityMaterials(object: THREE.Object3D): Array<{ material: THREE.Material; baseOpacity: number }> {
+  const collected: Array<{ material: THREE.Material; baseOpacity: number }> = [];
+  object.traverse((entry) => {
+    const disposable = entry as DisposableObject3D;
+    const source = disposable.material;
+    if (!source) {
+      return;
+    }
+
+    const materials = Array.isArray(source) ? source : [source];
+    materials.forEach((material) => {
+      if (!("opacity" in material)) {
+        return;
+      }
+      const opacity = (material as THREE.Material & { opacity: number }).opacity;
+      if (!Number.isFinite(opacity)) {
+        return;
+      }
+
+      collected.push({ material, baseOpacity: opacity });
+    });
+  });
+  return collected;
 }
 
 function resolvePixelRatio(quality: RenderQuality, devicePixelRatio: number): number {
@@ -814,6 +882,7 @@ export function Viewport() {
   const selectionRef = useRef(state.selection);
   const viewModeRef = useRef(state.viewMode);
   const scrollFlowEnabledRef = useRef(state.ui.scrollFlowEnabled);
+  const cutawayEnabledRef = useRef(state.ui.cutawayEnabled);
   const qualityRef = useRef(state.quality);
   const resetCameraRef = useRef<() => void>(() => {});
   const cameraTourRef = useRef<CameraTourState>({
@@ -842,6 +911,8 @@ export function Viewport() {
     targetWeight: 0,
     hasPoint: false,
   });
+  const cutawayEntriesRef = useRef<CutawayEntry[]>([]);
+  const applyCutawayRef = useRef<() => void>(() => {});
   const renderSceneRef = useRef<() => void>(() => {});
   const applyVisualStateRef = useRef<() => void>(() => {});
 
@@ -965,10 +1036,7 @@ export function Viewport() {
       tour.progress = resolvedProgress;
 
       const pose = sampleCameraTour(tour.layout, tour.progress);
-      const minZoomOffset = pose.distance * (WHEEL_ZOOM_MIN_FACTOR - 1);
-      const maxZoomOffset = pose.distance * (WHEEL_ZOOM_MAX_FACTOR - 1);
-      tour.zoomOffset = clamp(tour.zoomOffset, minZoomOffset, maxZoomOffset);
-      let resolvedDistance = Math.max(tour.layout.near * 3, pose.distance + tour.zoomOffset);
+      let resolvedDistance = Math.max(0.08, pose.distance + tour.zoomOffset);
       yawQuaternion.setFromAxisAngle(WORLD_UP, tour.orbitAzimuth);
       tourDirection.copy(pose.direction).applyQuaternion(yawQuaternion).normalize();
       tourRight.crossVectors(tourDirection, WORLD_UP);
@@ -1034,8 +1102,8 @@ export function Viewport() {
       camera.position.copy(tourCameraPosition);
       camera.lookAt(tourTarget);
 
-      const near = tour.layout.near;
-      const far = tour.layout.far;
+      const near = Math.max(0.02, Math.min(tour.layout.near, resolvedDistance * 0.22));
+      const far = Math.max(tour.layout.far, resolvedDistance + tour.layout.radius * 10);
       if (Math.abs(camera.near - near) > 0.0001 || Math.abs(camera.far - far) > 0.0001) {
         camera.near = near;
         camera.far = far;
@@ -1300,20 +1368,11 @@ export function Viewport() {
 
         tour.panOffset.addScaledVector(panRight, deltaX * worldPerPixel);
         tour.panOffset.addScaledVector(panUp, deltaY * worldPerPixel);
-
-        const maxPan = tour.layout.radius * 0.8;
-        if (tour.panOffset.length() > maxPan) {
-          tour.panOffset.setLength(maxPan);
-        }
         return;
       }
 
       tour.orbitAzimuth -= deltaX * ORBIT_DRAG_SPEED;
-      tour.orbitPolar = clamp(
-        tour.orbitPolar + deltaY * ORBIT_DRAG_SPEED,
-        -ORBIT_PITCH_LIMIT,
-        ORBIT_PITCH_LIMIT
-      );
+      tour.orbitPolar += deltaY * ORBIT_DRAG_SPEED;
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -1442,11 +1501,9 @@ export function Viewport() {
 
         tour.targetProgress = nextProgress;
       } else {
-        const baseDistance = sampleCameraTour(tour.layout, tour.targetProgress).distance;
-        const minZoomOffset = baseDistance * (WHEEL_ZOOM_MIN_FACTOR - 1);
-        const maxZoomOffset = baseDistance * (WHEEL_ZOOM_MAX_FACTOR - 1);
-        const zoomDelta = event.deltaY * baseDistance * WHEEL_ZOOM_SENSITIVITY;
-        const nextZoomOffset = clamp(tour.zoomOffset + zoomDelta, minZoomOffset, maxZoomOffset);
+        const referenceDistance = Math.max(worldFromFeet(2), tour.currentDistance);
+        const zoomDelta = event.deltaY * referenceDistance * WHEEL_ZOOM_SENSITIVITY;
+        const nextZoomOffset = tour.zoomOffset + zoomDelta;
         if (Math.abs(nextZoomOffset - tour.zoomOffset) < 0.0001) {
           return;
         }
@@ -1497,6 +1554,7 @@ export function Viewport() {
       renderer.forceContextLoss();
       rendererRef.current = null;
       resetCameraRef.current = () => {};
+      applyCutawayRef.current = () => {};
 
       if (renderer.domElement.parentElement === mountElement) {
         mountElement.removeChild(renderer.domElement);
@@ -1543,6 +1601,7 @@ export function Viewport() {
         targetWeight: 0,
         hasPoint: false,
       };
+      cutawayEntriesRef.current = [];
     };
   }, [select]);
 
@@ -1565,6 +1624,7 @@ export function Viewport() {
     rackHoverFocusRef.current.weight = 0;
     rackHoverFocusRef.current.targetWeight = 0;
     rackHoverFocusRef.current.hasPoint = false;
+    cutawayEntriesRef.current = [];
     entityByKeyRef.current.clear();
     objectToEntityKeyRef.current.clear();
 
@@ -1573,6 +1633,38 @@ export function Viewport() {
       layoutGroup.remove(child);
       disposeObjectTree(child);
     }
+
+    const detailTier = resolveDetailTier(model.rackCount, model.halls.length);
+    const cutawayEntries: CutawayEntry[] = [];
+    const registerCutawayObject = (
+      object: THREE.Object3D,
+      options?: { hideWhenCutaway?: boolean; opacityScale?: number }
+    ) => {
+      cutawayEntries.push({
+        object,
+        hideWhenCutaway: options?.hideWhenCutaway ?? false,
+        opacityScale: options?.opacityScale ?? 1,
+        materials: collectOpacityMaterials(object),
+      });
+    };
+    const applyCutawayMode = () => {
+      const enabled = cutawayEnabledRef.current;
+      cutawayEntries.forEach((entry) => {
+        entry.object.visible = enabled ? !entry.hideWhenCutaway : true;
+        entry.materials.forEach(({ material, baseOpacity }) => {
+          if (!("opacity" in material)) {
+            return;
+          }
+          const targetOpacity = enabled
+            ? baseOpacity * entry.opacityScale
+            : baseOpacity;
+          (material as THREE.Material & { opacity: number }).opacity = targetOpacity;
+          material.transparent = targetOpacity < 0.999;
+          material.needsUpdate = true;
+        });
+      });
+    };
+    applyCutawayRef.current = applyCutawayMode;
 
     // Parameter-driven visual mapping:
     // - criticalLoadMW: vertical scale and utility module sizing
@@ -1649,6 +1741,7 @@ export function Viewport() {
     serviceDeck.position.y = worldFromFeet(0.9);
     layoutGroup.add(serviceDeck);
     buildingInteractionTargets.push(serviceDeck);
+    registerCutawayObject(serviceDeck, { opacityScale: 0.54 });
 
     const whitespaceDeck = new THREE.Mesh(
       new THREE.BoxGeometry(hallFieldWidth, worldFromFeet(1.75), hallFieldDepth),
@@ -1661,6 +1754,7 @@ export function Viewport() {
     whitespaceDeck.position.y = worldFromFeet(2);
     layoutGroup.add(whitespaceDeck);
     buildingInteractionTargets.push(whitespaceDeck);
+    registerCutawayObject(whitespaceDeck, { opacityScale: 0.46 });
 
     const shellBaseColor = blendHex(palette.shell, efficiencyAccent, lerp(0.1, 0.3, pueNorm));
     const shellOpacity = Math.min(0.48, lerp(0.16, 0.34, pueNorm) + lerp(0.02, 0.1, areaNorm));
@@ -1684,6 +1778,7 @@ export function Viewport() {
     buildingMesh.position.y = baseY + buildingHeight / 2;
     layoutGroup.add(buildingMesh);
     buildingInteractionTargets.push(buildingMesh);
+    registerCutawayObject(buildingMesh, { opacityScale: CUTAWAY_SHELL_OPACITY_SCALE });
 
     const buildingEdges = new THREE.LineSegments(
       new THREE.EdgesGeometry(buildingMesh.geometry),
@@ -1697,8 +1792,10 @@ export function Viewport() {
     buildingEdges.position.copy(buildingMesh.position);
     layoutGroup.add(buildingEdges);
     buildingInteractionTargets.push(buildingEdges);
+    registerCutawayObject(buildingEdges, { opacityScale: CUTAWAY_EDGE_OPACITY_SCALE });
 
-    const roofPlantCount = Math.max(1, Math.round(lerp(1, 4, pueNorm)));
+    const roofPlantBaseCount = Math.max(1, Math.round(lerp(1, 4, pueNorm)));
+    const roofPlantCount = limitDetailCount(roofPlantBaseCount, detailTier, 3, 2);
     const roofPlantWidthFt = Math.max(8, (buildingWidthFt * 0.65) / roofPlantCount);
     const roofPlantHeightFt = lerp(4, 11, pueNorm);
     const roofPlantDepthFt = lerp(6.5, 14.5, pueNorm);
@@ -1727,6 +1824,7 @@ export function Viewport() {
       );
       layoutGroup.add(roofPlant);
       buildingInteractionTargets.push(roofPlant);
+      registerCutawayObject(roofPlant, { hideWhenCutaway: true, opacityScale: 0.4 });
     }
 
     const hallCount = model.halls.length;
@@ -1831,6 +1929,7 @@ export function Viewport() {
       hallMesh.position.set(x, hallY, z);
       layoutGroup.add(hallMesh);
       hallInteractionTargets.push(hallMesh);
+      registerCutawayObject(hallMesh, { opacityScale: CUTAWAY_HALL_OPACITY_SCALE });
 
       const hallEdges = new THREE.LineSegments(
         new THREE.EdgesGeometry(hallMesh.geometry),
@@ -1843,6 +1942,7 @@ export function Viewport() {
       hallEdges.position.copy(hallMesh.position);
       layoutGroup.add(hallEdges);
       hallInteractionTargets.push(hallEdges);
+      registerCutawayObject(hallEdges, { opacityScale: CUTAWAY_EDGE_OPACITY_SCALE });
 
       const utilization = hall.capacity > 0 ? clamp01(hall.rackCount / hall.capacity) : 0;
       const rowCount = Math.max(1, hall.rows.length);
@@ -1905,7 +2005,7 @@ export function Viewport() {
       const thermalIntensity = clamp01(
         thermalBase * thermalSuppression + pueNorm * 0.08
       );
-      const thermalPlaneCount =
+      const thermalPlaneBaseCount =
         params.coolingType === "Air-Cooled"
           ? hallsNorm > 0.7
             ? 2
@@ -1913,6 +2013,7 @@ export function Viewport() {
           : params.coolingType === "Hybrid"
             ? 2
             : 1;
+      const thermalPlaneCount = limitDetailCount(thermalPlaneBaseCount, detailTier, 2, 1);
 
       for (let layerIndex = 0; layerIndex < thermalPlaneCount; layerIndex += 1) {
         const layerT =
@@ -1952,7 +2053,7 @@ export function Viewport() {
         hallInteractionTargets.push(thermalPlane);
       }
 
-      const airIndicatorCount =
+      const airIndicatorBaseCount =
         params.coolingType === "Air-Cooled"
           ? hallsNorm > 0.7
             ? 2
@@ -1960,6 +2061,7 @@ export function Viewport() {
           : params.coolingType === "Hybrid"
             ? 2
             : 0;
+      const airIndicatorCount = limitDetailCount(airIndicatorBaseCount, detailTier, 2, 1);
       for (let indicatorIndex = 0; indicatorIndex < airIndicatorCount; indicatorIndex += 1) {
         const indicatorSpread =
           airIndicatorCount <= 1
@@ -2014,7 +2116,7 @@ export function Viewport() {
         hallInteractionTargets.push(airTip);
       }
 
-      const liquidIndicatorCount =
+      const liquidIndicatorBaseCount =
         params.coolingType === "DLC"
           ? hallsNorm > 0.7
             ? 2
@@ -2022,6 +2124,7 @@ export function Viewport() {
           : params.coolingType === "Hybrid"
             ? 2
             : 0;
+      const liquidIndicatorCount = limitDetailCount(liquidIndicatorBaseCount, detailTier, 2, 1);
       for (let indicatorIndex = 0; indicatorIndex < liquidIndicatorCount; indicatorIndex += 1) {
         const zOffset =
           liquidIndicatorCount <= 1
@@ -2061,7 +2164,7 @@ export function Viewport() {
       layoutGroup.add(traySpine);
       hallInteractionTargets.push(traySpine);
 
-      const trayBranchCount = Math.max(1, Math.min(4, rowCount));
+      const trayBranchCount = limitDetailCount(Math.max(1, Math.min(4, rowCount)), detailTier, 2, 1);
       for (let branchIndex = 0; branchIndex < trayBranchCount; branchIndex += 1) {
         const branchZ =
           z -
@@ -2087,7 +2190,8 @@ export function Viewport() {
       }
 
       if (params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid") {
-        const ductCount = params.coolingType === "Air-Cooled" ? 2 : 1;
+        const ductBaseCount = params.coolingType === "Air-Cooled" ? 2 : 1;
+        const ductCount = limitDetailCount(ductBaseCount, detailTier, 1, 1);
         for (let ductIndex = 0; ductIndex < ductCount; ductIndex += 1) {
           const duct = new THREE.Mesh(
             new THREE.BoxGeometry(hallWidth * 0.88, hallHeight * 0.08, hallDepth * 0.14),
@@ -2233,6 +2337,7 @@ export function Viewport() {
         cap.position.set(x, hallY + hallHeight / 2 - capHeight / 2, z);
         layoutGroup.add(cap);
         hallInteractionTargets.push(cap);
+        registerCutawayObject(cap, { hideWhenCutaway: true, opacityScale: 0.3 });
 
         const enclosureWallOpacity = 0.28;
         const enclosureWallDepth = hallDepth * 0.98;
@@ -2258,6 +2363,7 @@ export function Viewport() {
           );
           layoutGroup.add(sideWall);
           hallInteractionTargets.push(sideWall);
+          registerCutawayObject(sideWall, { hideWhenCutaway: true, opacityScale: 0.28 });
         }
 
         for (const direction of [-1, 1]) {
@@ -2280,6 +2386,7 @@ export function Viewport() {
           );
           layoutGroup.add(frontBackWall);
           hallInteractionTargets.push(frontBackWall);
+          registerCutawayObject(frontBackWall, { hideWhenCutaway: true, opacityScale: 0.28 });
         }
       }
 
@@ -2383,7 +2490,11 @@ export function Viewport() {
         buildingInteractionTargets.push(airReturnTrunk);
       }
 
-      hallAirTapPoints.forEach(({ point: tapPoint }) => {
+      const airTapStride = resolveBranchStride(hallAirTapPoints.length, detailTier, 32, 14);
+      hallAirTapPoints.forEach(({ point: tapPoint }, tapIndex) => {
+        if (tapIndex % airTapStride !== 0) {
+          return;
+        }
         const branchStart = new THREE.Vector3(tapPoint.x, trunkY, supplyZ);
         const branchEnd = new THREE.Vector3(tapPoint.x, trunkY, tapPoint.z);
         const dropEnd = new THREE.Vector3(tapPoint.x, tapPoint.y, tapPoint.z);
@@ -2502,7 +2613,11 @@ export function Viewport() {
         buildingInteractionTargets.push(returnHeader);
       }
 
-      hallLiquidTapPoints.forEach(({ point: tapPoint }) => {
+      const liquidTapStride = resolveBranchStride(hallLiquidTapPoints.length, detailTier, 28, 12);
+      hallLiquidTapPoints.forEach(({ point: tapPoint }, tapIndex) => {
+        if (tapIndex % liquidTapStride !== 0) {
+          return;
+        }
         const branchSupplyStart = new THREE.Vector3(supplyX, tapPoint.y, tapPoint.z);
         const branchReturnStart = new THREE.Vector3(returnX, tapPoint.y, tapPoint.z);
 
@@ -2666,7 +2781,11 @@ export function Viewport() {
             left.distanceToSquared(target) - right.distanceToSquared(target)
         );
 
-    hallPowerTapPoints.forEach(({ point: tapPoint, hallIndex }) => {
+    const powerTapStride = resolveBranchStride(hallPowerTapPoints.length, detailTier, 28, 10);
+    hallPowerTapPoints.forEach(({ point: tapPoint, hallIndex }, tapIndex) => {
+      if (tapIndex % powerTapStride !== 0) {
+        return;
+      }
       if (powerModuleAnchors.length === 0) {
         return;
       }
@@ -2732,20 +2851,11 @@ export function Viewport() {
       tour.zoomOffset = 0;
     } else {
       const scaleRatio = cameraTourLayout.radius / Math.max(previousLayout.radius, 0.001);
-      tour.panOffset.multiplyScalar(clamp(scaleRatio, 0.4, 2.4));
-      tour.zoomOffset *= clamp(scaleRatio, 0.4, 2.4);
+      tour.panOffset.multiplyScalar(scaleRatio);
+      tour.zoomOffset *= scaleRatio;
       tour.progress = clamp01(tour.progress);
       tour.targetProgress = clamp01(tour.targetProgress);
     }
-
-    const maxPan = cameraTourLayout.radius * 0.8;
-    if (tour.panOffset.length() > maxPan) {
-      tour.panOffset.setLength(maxPan);
-    }
-    const poseForZoomClamp = sampleCameraTour(cameraTourLayout, tour.progress);
-    const minZoomOffset = poseForZoomClamp.distance * (WHEEL_ZOOM_MIN_FACTOR - 1);
-    const maxZoomOffset = poseForZoomClamp.distance * (WHEEL_ZOOM_MAX_FACTOR - 1);
-    tour.zoomOffset = clamp(tour.zoomOffset, minZoomOffset, maxZoomOffset);
 
     const footprintSpan = Math.max(size.x, size.z);
     const floorSize = Math.max(FLOOR_SIZE, footprintSpan * 2.8);
@@ -2768,6 +2878,8 @@ export function Viewport() {
       scene.fog.far = Math.max(260, fitDistance + radius * 4.5);
     }
 
+    cutawayEntriesRef.current = cutawayEntries;
+    applyCutawayMode();
     applyVisualStateRef.current();
     renderSceneRef.current();
   }, [model, params]);
@@ -2791,6 +2903,12 @@ export function Viewport() {
       renderSceneRef.current();
     }
   }, [state.ui.scrollFlowEnabled]);
+
+  useEffect(() => {
+    cutawayEnabledRef.current = state.ui.cutawayEnabled;
+    applyCutawayRef.current();
+    renderSceneRef.current();
+  }, [state.ui.cutawayEnabled]);
 
   useEffect(() => {
     qualityRef.current = state.quality;

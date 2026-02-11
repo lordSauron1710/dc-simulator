@@ -5,6 +5,7 @@
 import type { AppState } from "./types";
 import type { StoreAction } from "./actions";
 import { DEFAULT_STATE } from "./types";
+import { parseStateFromSearch } from "./urlState";
 
 export function storeReducer(state: AppState, action: StoreAction): AppState {
   switch (action.type) {
@@ -23,6 +24,11 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
         ...state,
         ui: { ...state.ui, scrollFlowEnabled: action.payload },
       };
+    case "SET_CUTAWAY_ENABLED":
+      return {
+        ...state,
+        ui: { ...state.ui, cutawayEnabled: action.payload },
+      };
     case "SET_UI":
       return { ...state, ui: { ...state.ui, ...action.payload } };
     case "TOGGLE_DRAWER":
@@ -38,5 +44,27 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
 }
 
 export function getInitialState(): AppState {
-  return { ...DEFAULT_STATE };
+  const base: AppState = {
+    ...DEFAULT_STATE,
+    params: { ...DEFAULT_STATE.params },
+    selection: { ...DEFAULT_STATE.selection },
+    ui: { ...DEFAULT_STATE.ui },
+  };
+
+  if (typeof window === "undefined") {
+    return base;
+  }
+
+  const parsed = parseStateFromSearch(window.location.search);
+  if (!parsed) {
+    return base;
+  }
+
+  return {
+    ...base,
+    ...parsed,
+    params: { ...base.params, ...(parsed.params ?? {}) },
+    selection: parsed.selection ?? base.selection,
+    ui: { ...base.ui, ...(parsed.ui ?? {}) },
+  };
 }

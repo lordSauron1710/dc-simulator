@@ -54,6 +54,7 @@ export interface UIState {
   drawerOpen: boolean;
   cameraResetNonce: number;
   scrollFlowEnabled: boolean;
+  cutawayEnabled: boolean;
 }
 
 export interface AppState {
@@ -97,6 +98,7 @@ export const DEFAULT_UI: UIState = {
   drawerOpen: true,
   cameraResetNonce: 0,
   scrollFlowEnabled: false,
+  cutawayEnabled: false,
 };
 
 export const DEFAULT_STATE: AppState = {

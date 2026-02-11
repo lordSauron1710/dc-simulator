@@ -225,6 +225,7 @@ Implement orbit, pan, reset, and quality toggles.
 ---
 
 ## Prompt 14 — Performance pass
+<!-- EXECUTED -->
 
 **Prompt**  
 Optimize instancing, memoization, debouncing, and LOD.
@@ -239,6 +240,7 @@ Optimize instancing, memoization, debouncing, and LOD.
 ---
 
 ## Prompt 15 — Polish
+<!-- EXECUTED -->
 
 **Prompt**  
 Add cutaway mode, presets, and URL-shareable state.

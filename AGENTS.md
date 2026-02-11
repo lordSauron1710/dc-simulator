@@ -8,6 +8,8 @@
 
 Deliver a **visually creative, deployable webapp**: a parameter-driven 3D data center sandbox with a polished UI, smooth interactions, and production-ready build/deploy.
 
+Prioritise **high spatial awareness** and strong **3D construction ability** across layout, scene composition, and interaction design.
+
 ---
 
 ## Mindset

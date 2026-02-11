@@ -256,6 +256,7 @@ Add cutaway mode, presets, and URL-shareable state.
 ---
 
 ## Definition of Done (v0)
+<!-- EXECUTED: V0 COMPLETE -->
 
 - Fully procedural, no external assets
 - Parameter-driven 3D data center visualization

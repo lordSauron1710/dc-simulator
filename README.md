@@ -2,6 +2,8 @@
 
 Parameter-driven data center visualization sandbox with a Next.js dashboard, typed global state, and an interactive viewport.
 
+Live deployment: [dc-simulator-omega.vercel.app](https://dc-simulator-omega.vercel.app)
+
 > **Current state:** Prompts 01-15 in `roadmap.md` are executed, including camera controls, performance pass (memoization + LOD), and polish features (cutaway mode, presets, URL-shareable state).
 
 [![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
@@ -9,7 +11,7 @@ Parameter-driven data center visualization sandbox with a Next.js dashboard, typ
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![Roadmap](https://img.shields.io/badge/Roadmap-01--15%20executed-blue)](roadmap.md)
 
-![DC Simulator UI](docs/screenshots/ui_demo.png)
+![DC Simulator UI (Vercel Live)](docs/screenshots/ui_vercel_live.png)
 
 ## What it does
 

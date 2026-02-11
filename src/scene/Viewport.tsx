@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { computeDataCenter, type DataCenterModel } from "@/model";
 import { useStore } from "@/state";
@@ -16,6 +16,9 @@ const ORBIT_DRAG_SPEED = 0.004;
 const PAN_DRAG_SPEED = 1.15;
 const ORBIT_PITCH_LIMIT = Math.PI * 0.43;
 const DRAG_THRESHOLD_SQ = 9;
+const GUIDE_ANCHOR_GAP_PX = 8;
+const GUIDE_ANCHOR_TOP_FALLBACK_PX = 16;
+const GUIDE_ANCHOR_RIGHT_FALLBACK_PX = 288;
 
 const PARAM_RANGES = {
   criticalLoadMW: { min: 0.5, max: 1000 },
@@ -167,6 +170,12 @@ interface CameraDragState {
   suppressClick: boolean;
 }
 
+interface CameraGuideProgress {
+  scrolled: boolean;
+  dragged: boolean;
+  shiftPan: boolean;
+}
+
 function disposeMaterial(material?: THREE.Material | THREE.Material[]): void {
   if (!material) {
     return;
@@ -261,6 +270,20 @@ function computeCameraFitDistance(camera: THREE.PerspectiveCamera, radius: numbe
   const fitDistanceVertical = radius / Math.sin(verticalFov / 2);
   const fitDistanceHorizontal = radius / Math.sin(horizontalFov / 2);
   return Math.max(fitDistanceVertical, fitDistanceHorizontal) * 1.08;
+}
+
+function countGuideSteps(progress: CameraGuideProgress): number {
+  let completed = 0;
+  if (progress.scrolled) {
+    completed += 1;
+  }
+  if (progress.dragged) {
+    completed += 1;
+  }
+  if (progress.shiftPan) {
+    completed += 1;
+  }
+  return completed;
 }
 
 function createCameraTourLayout(
@@ -766,8 +789,24 @@ export function Viewport() {
   const { state, select } = useStore();
   const { params } = state;
   const model = useMemo(() => computeDataCenter(params), [params]);
+  const [guideExpanded, setGuideExpanded] = useState(true);
+  const [guideAnchor, setGuideAnchor] = useState<{ top: number; right: number }>({
+    top: GUIDE_ANCHOR_TOP_FALLBACK_PX,
+    right: GUIDE_ANCHOR_RIGHT_FALLBACK_PX,
+  });
+  const [guideProgress, setGuideProgress] = useState<CameraGuideProgress>({
+    scrolled: false,
+    dragged: false,
+    shiftPan: false,
+  });
+  const completedGuideSteps = countGuideSteps(guideProgress);
 
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const guideProgressRef = useRef<CameraGuideProgress>({
+    scrolled: false,
+    dragged: false,
+    shiftPan: false,
+  });
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const layoutGroupRef = useRef<THREE.Group | null>(null);
@@ -787,7 +826,6 @@ export function Viewport() {
     selectedIndex: null,
   });
   const selectionRef = useRef(state.selection);
-  const viewModeRef = useRef(state.viewMode);
   const cameraTourRef = useRef<CameraTourState>({
     layout: null,
     progress: 0,
@@ -808,6 +846,112 @@ export function Viewport() {
   });
   const renderSceneRef = useRef<() => void>(() => {});
   const applyVisualStateRef = useRef<() => void>(() => {});
+
+  const toggleGuideExpanded = () => {
+    setGuideExpanded((previous) => !previous);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    let rafHandle: number | null = null;
+    let trackedInspector: HTMLElement | null = null;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => scheduleSync())
+        : null;
+
+    const setAnchorFromInspector = () => {
+      const inspectorElement = document.querySelector(".panel-specs");
+      if (!(inspectorElement instanceof HTMLElement)) {
+        setGuideAnchor((previous) => {
+          if (
+            previous.top === GUIDE_ANCHOR_TOP_FALLBACK_PX &&
+            previous.right === GUIDE_ANCHOR_RIGHT_FALLBACK_PX
+          ) {
+            return previous;
+          }
+          return {
+            top: GUIDE_ANCHOR_TOP_FALLBACK_PX,
+            right: GUIDE_ANCHOR_RIGHT_FALLBACK_PX,
+          };
+        });
+        return;
+      }
+
+      const bounds = inspectorElement.getBoundingClientRect();
+      const top = Math.round(bounds.top);
+      const right = Math.max(
+        GUIDE_ANCHOR_GAP_PX,
+        Math.round(window.innerWidth - bounds.left + GUIDE_ANCHOR_GAP_PX)
+      );
+
+      setGuideAnchor((previous) => {
+        if (previous.top === top && previous.right === right) {
+          return previous;
+        }
+        return { top, right };
+      });
+    };
+
+    const attachResizeObserver = () => {
+      const inspectorElement = document.querySelector(".panel-specs");
+      if (!(inspectorElement instanceof HTMLElement)) {
+        if (resizeObserver && trackedInspector) {
+          resizeObserver.unobserve(trackedInspector);
+        }
+        trackedInspector = null;
+        return;
+      }
+
+      if (trackedInspector === inspectorElement) {
+        return;
+      }
+
+      if (resizeObserver && trackedInspector) {
+        resizeObserver.unobserve(trackedInspector);
+      }
+
+      trackedInspector = inspectorElement;
+      resizeObserver?.observe(inspectorElement);
+    };
+
+    const scheduleSync = () => {
+      if (rafHandle !== null) {
+        window.cancelAnimationFrame(rafHandle);
+      }
+
+      rafHandle = window.requestAnimationFrame(() => {
+        attachResizeObserver();
+        setAnchorFromInspector();
+      });
+    };
+
+    const mutationObserver = new MutationObserver(() => scheduleSync());
+    mutationObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+
+    window.addEventListener("resize", scheduleSync);
+    scheduleSync();
+
+    return () => {
+      window.removeEventListener("resize", scheduleSync);
+      mutationObserver.disconnect();
+      if (rafHandle !== null) {
+        window.cancelAnimationFrame(rafHandle);
+      }
+      if (resizeObserver && trackedInspector) {
+        resizeObserver.unobserve(trackedInspector);
+      }
+      resizeObserver?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const mountElement = mountRef.current;
@@ -881,6 +1025,18 @@ export function Viewport() {
     const tourCameraPosition = new THREE.Vector3();
     const yawQuaternion = new THREE.Quaternion();
     const pitchQuaternion = new THREE.Quaternion();
+
+    const markGuideProgress = (step: keyof CameraGuideProgress): boolean => {
+      const current = guideProgressRef.current;
+      if (current[step]) {
+        return false;
+      }
+
+      const next = { ...current, [step]: true };
+      guideProgressRef.current = next;
+      setGuideProgress(next);
+      return true;
+    };
 
     const updateCameraFromTour = (deltaSeconds: number): boolean => {
       const tour = cameraTourRef.current;
@@ -1156,13 +1312,13 @@ export function Viewport() {
       mountElement.style.cursor = hoveredRef.current ? "pointer" : "default";
     };
 
-    const applyCameraDrag = (deltaX: number, deltaY: number) => {
+    const applyCameraDrag = (deltaX: number, deltaY: number, forcePan: boolean) => {
       const tour = cameraTourRef.current;
       if (!tour.layout) {
         return;
       }
 
-      if (viewModeRef.current === "pan") {
+      if (forcePan) {
         const viewportHeight = Math.max(1, mountElement.clientHeight);
         const worldPerPixel =
           ((2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) /
@@ -1178,7 +1334,7 @@ export function Viewport() {
         }
         panUp.crossVectors(panRight, tour.currentDirection).normalize();
 
-        tour.panOffset.addScaledVector(panRight, -deltaX * worldPerPixel);
+        tour.panOffset.addScaledVector(panRight, deltaX * worldPerPixel);
         tour.panOffset.addScaledVector(panUp, deltaY * worldPerPixel);
 
         const maxPan = tour.layout.radius * 0.8;
@@ -1190,7 +1346,7 @@ export function Viewport() {
 
       tour.orbitAzimuth -= deltaX * ORBIT_DRAG_SPEED;
       tour.orbitPolar = clamp(
-        tour.orbitPolar - deltaY * ORBIT_DRAG_SPEED,
+        tour.orbitPolar + deltaY * ORBIT_DRAG_SPEED,
         -ORBIT_PITCH_LIMIT,
         ORBIT_PITCH_LIMIT
       );
@@ -1234,7 +1390,13 @@ export function Viewport() {
           return;
         }
 
-        applyCameraDrag(deltaX, deltaY);
+        const isShiftPan = event.shiftKey;
+        if (isShiftPan) {
+          markGuideProgress("shiftPan");
+        } else {
+          markGuideProgress("dragged");
+        }
+        applyCameraDrag(deltaX, deltaY, isShiftPan);
         renderScene();
         return;
       }
@@ -1299,7 +1461,6 @@ export function Viewport() {
       if (!hit) {
         return;
       }
-
       select({ id: hit.id, type: hit.type });
       renderScene();
     };
@@ -1318,6 +1479,7 @@ export function Viewport() {
         return;
       }
 
+      markGuideProgress("scrolled");
       tour.targetProgress = nextProgress;
       renderScene();
     };
@@ -1399,6 +1561,11 @@ export function Viewport() {
         lastY: 0,
         moved: false,
         suppressClick: false,
+      };
+      guideProgressRef.current = {
+        scrolled: false,
+        dragged: false,
+        shiftPan: false,
       };
     };
   }, [select]);
@@ -2600,6 +2767,7 @@ export function Viewport() {
       tour.progress = clamp01(tour.progress);
       tour.targetProgress = clamp01(tour.targetProgress);
     }
+
     const maxPan = cameraTourLayout.radius * 0.8;
     if (tour.panOffset.length() > maxPan) {
       tour.panOffset.setLength(maxPan);
@@ -2636,9 +2804,72 @@ export function Viewport() {
     renderSceneRef.current();
   }, [state.selection]);
 
-  useEffect(() => {
-    viewModeRef.current = state.viewMode;
-  }, [state.viewMode]);
+  return (
+    <div ref={mountRef} className="viewport" aria-label="3D data center viewport">
+      <div className="camera-overlay-layer" aria-hidden={false}>
+        <div
+          className="camera-guide-anchor"
+          style={{ top: `${guideAnchor.top}px`, right: `${guideAnchor.right}px` }}
+        >
+          {guideExpanded ? (
+            <aside className="camera-guide" aria-label="Camera movement guide">
+              <div className="camera-guide-header panel-title panel-title-with-controls">
+                <span>Camera Guide</span>
+                <div className="inspector-actions">
+                  <span className="camera-guide-toggle-meta">{completedGuideSteps}/3</span>
+                  <button
+                    type="button"
+                    className="inspector-action-btn"
+                    onClick={toggleGuideExpanded}
+                    aria-label="Collapse camera guide"
+                    title="Collapse"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 11h14v2H5z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
-  return <div ref={mountRef} className="viewport" aria-label="3D data center viewport" />;
+              <div className="camera-guide-content">
+                <div className="camera-guide-row">
+                  <span className={`camera-guide-dot ${guideProgress.scrolled ? "is-complete" : ""}`} />
+                  <span>Scroll flow moves the camera along the fixed path.</span>
+                </div>
+                <div className="camera-guide-row">
+                  <span className={`camera-guide-dot ${guideProgress.dragged ? "is-complete" : ""}`} />
+                  <span>Click + drag freely rotates the camera view.</span>
+                </div>
+                <div className="camera-guide-row">
+                  <span className={`camera-guide-dot ${guideProgress.shiftPan ? "is-complete" : ""}`} />
+                  <span>Hold Shift + drag to pan independent of scroll flow.</span>
+                </div>
+              </div>
+            </aside>
+          ) : (
+            <aside className="camera-guide camera-guide-minimal" aria-label="Camera guide minimized">
+              <button
+                type="button"
+                className="panel-minimal-toggle"
+                onClick={toggleGuideExpanded}
+                aria-label="Expand camera guide"
+                title="Expand camera guide"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path d="M4.5 8.5h3l1.4-2h6.2l1.4 2h3A1.5 1.5 0 0 1 21 10v7a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17v-7A1.5 1.5 0 0 1 4.5 8.5z" />
+                  <circle cx="12" cy="13.5" r="3.25" />
+                </svg>
+              </button>
+            </aside>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

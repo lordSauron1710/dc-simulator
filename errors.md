@@ -61,6 +61,13 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Disabled depth writing for transparent scene materials and forced shell render order behind interior hall content.
 - **Lesson:** For x-ray-style interiors, transparent surfaces must not write depth or they will visually erase valid geometry behind them.
 
+### [Camera guide drifted from inspector across minimize states]
+
+- **Symptom:** Camera guide could appear misaligned or visually spaced away from inspector, and minimizing felt inconsistent with inspector’s icon state.
+- **Root cause:** Guide anchor coordinates were computed in `Viewport` but never applied to the rendered anchor element; CSS also kept a fixed guide anchor width/offset.
+- **Fix:** Applied live `top/right` anchor styles from inspector bounds and moved guide sizing to the card itself so expanded/minimized guide states align directly beside inspector in every inspector view.
+- **Lesson:** If overlay alignment depends on runtime measurements, always bind measured values to DOM styles and avoid competing fixed layout offsets in CSS.
+
 ---
 
 ## State & params

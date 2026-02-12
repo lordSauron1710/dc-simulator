@@ -1,6 +1,7 @@
 /**
  * Global store types for DC Simulator (Prompt 03).
  * params: data-center inputs; selection: current focus; viewMode: camera; ui: overlay state.
+ * v1 adds a typed campus hierarchy to support campus-scale authoring and simulation.
  *
  * Industry terminology:
  * - Critical IT Load: Total power consumed by IT equipment (servers, storage, network)
@@ -9,6 +10,14 @@
  * - PUE: Power Usage Effectiveness = Total Facility Power / IT Equipment Power
  * - N/N+1/2N: Redundancy configurations for critical infrastructure
  */
+import {
+  buildDefaultCampusFromParams,
+  type Campus,
+  type Zone,
+  type Hall,
+  type Rack,
+  type EntityMetadata,
+} from "@/model";
 
 /** Power redundancy topology per Uptime Institute tiers */
 export type Redundancy = "N" | "N+1" | "2N";
@@ -48,7 +57,6 @@ export interface Selection {
 }
 
 export type ViewMode = "orbit" | "pan";
-export type RenderQuality = "performance" | "balanced" | "quality";
 
 export interface UIState {
   drawerOpen: boolean;
@@ -59,9 +67,9 @@ export interface UIState {
 
 export interface AppState {
   params: Params;
+  campus: Campus;
   selection: Selection;
   viewMode: ViewMode;
-  quality: RenderQuality;
   ui: UIState;
 }
 
@@ -101,10 +109,20 @@ export const DEFAULT_UI: UIState = {
   cutawayEnabled: false,
 };
 
+export const DEFAULT_CAMPUS: Campus = buildDefaultCampusFromParams(DEFAULT_PARAMS);
+
 export const DEFAULT_STATE: AppState = {
   params: DEFAULT_PARAMS,
+  campus: DEFAULT_CAMPUS,
   selection: DEFAULT_SELECTION,
   viewMode: "orbit",
-  quality: "balanced",
   ui: DEFAULT_UI,
+};
+
+export type {
+  Campus,
+  Zone,
+  Hall,
+  Rack,
+  EntityMetadata,
 };

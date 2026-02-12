@@ -10,8 +10,8 @@ export type { StoreAction } from "./actions";
 export {
   setParams,
   patchParams,
+  setCampus,
   setSelection,
-  setQuality,
   setCutawayEnabled,
   setScrollFlowEnabled,
   setViewMode,
@@ -25,8 +25,12 @@ export type {
   Selection,
   SelectionType,
   ViewMode,
-  RenderQuality,
   UIState,
+  Campus,
+  Zone,
+  Hall,
+  Rack,
+  EntityMetadata,
   Redundancy,
   CoolingType,
   ContainmentType,
@@ -34,6 +38,7 @@ export type {
 export {
   DEFAULT_STATE,
   DEFAULT_PARAMS,
+  DEFAULT_CAMPUS,
   DEFAULT_SELECTION,
   DEFAULT_UI,
 } from "./types";
@@ -51,3 +56,7 @@ export {
   parseStateFromSearch,
   serializeStateToSearch,
 } from "./urlState";
+export {
+  hydrateV1StateFromParsedState,
+  mapV0ParamsToDefaultCampus,
+} from "./migrations";

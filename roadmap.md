@@ -274,6 +274,7 @@ Core focus: hierarchical campus editing, selection-aware scene scoping, animated
 ---
 
 ## Prompt 16 — Campus domain model upgrade
+<!-- EXECUTED -->
 
 **Prompt**  
 Introduce a typed hierarchical data model for the whole site:

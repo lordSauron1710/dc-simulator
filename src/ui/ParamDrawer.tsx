@@ -10,6 +10,7 @@ export interface ParamDrawerProps {
   isOpen: boolean;
   onToggle: () => void;
   onParamsChange: (patch: Partial<Params>) => void;
+  showHeader?: boolean;
 }
 
 /** Format large numbers with thousands separator */
@@ -33,7 +34,10 @@ export function ParamDrawer({
   isOpen,
   onToggle,
   onParamsChange,
+  showHeader = true,
 }: ParamDrawerProps) {
+  const effectiveOpen = showHeader ? isOpen : true;
+
   const handleSliderChange = useCallback(
     (key: keyof Params) => (value: number) => {
       onParamsChange({ [key]: value });
@@ -49,31 +53,33 @@ export function ParamDrawer({
   );
 
   return (
-    <div className={`param-drawer ${isOpen ? "open" : "closed"}`}>
-      <button
-        type="button"
-        className="param-drawer-header"
-        onClick={onToggle}
-        aria-expanded={isOpen}
-        aria-controls="param-drawer-content"
-      >
-        <span>PARAMETERS</span>
-        <svg
-          width="12"
-          height="12"
-          fill="currentColor"
-          viewBox="0 0 10 10"
-          className="param-drawer-chevron"
-          style={{
-            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.2s",
-          }}
+    <div className={`param-drawer ${effectiveOpen ? "open" : "closed"} ${showHeader ? "" : "param-drawer-embedded"}`}>
+      {showHeader ? (
+        <button
+          type="button"
+          className="param-drawer-header"
+          onClick={onToggle}
+          aria-expanded={effectiveOpen}
+          aria-controls="param-drawer-content"
         >
-          <path d="M1 3L5 7L9 3Z" />
-        </svg>
-      </button>
+          <span>PARAMETERS</span>
+          <svg
+            width="12"
+            height="12"
+            fill="currentColor"
+            viewBox="0 0 10 10"
+            className="param-drawer-chevron"
+            style={{
+              transform: effectiveOpen ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s",
+            }}
+          >
+            <path d="M1 3L5 7L9 3Z" />
+          </svg>
+        </button>
+      ) : null}
 
-      <div className="param-drawer-content" id="param-drawer-content">
+      <div className="param-drawer-content" id={showHeader ? "param-drawer-content" : undefined}>
         {/* Facility-level parameters */}
         <div className="param-section">
           <div className="param-section-title">Facility</div>

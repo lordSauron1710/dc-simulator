@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { computeDataCenter, type DataCenterModel } from "@/model";
 import { useStore } from "@/state";
-import type { Params, RenderQuality } from "@/state/types";
+import type { Params } from "@/state/types";
 
 const FOOT_TO_WORLD = 0.115;
 const FLOOR_SIZE = 280;
@@ -21,11 +21,7 @@ const RACK_HOVER_FOCUS_DISTANCE_SCALE = 0.52;
 const CUTAWAY_SHELL_OPACITY_SCALE = 0.28;
 const CUTAWAY_HALL_OPACITY_SCALE = 0.42;
 const CUTAWAY_EDGE_OPACITY_SCALE = 0.52;
-const QUALITY_PIXEL_RATIO_CAP: Record<RenderQuality, number> = {
-  performance: 1,
-  balanced: 1.5,
-  quality: 2,
-};
+const BALANCED_PIXEL_RATIO_CAP = 1.5;
 
 const PARAM_RANGES = {
   criticalLoadMW: { min: 0.5, max: 1000 },
@@ -297,9 +293,9 @@ function collectOpacityMaterials(object: THREE.Object3D): Array<{ material: THRE
   return collected;
 }
 
-function resolvePixelRatio(quality: RenderQuality, devicePixelRatio: number): number {
+function resolvePixelRatio(devicePixelRatio: number): number {
   const safeRatio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return Math.min(safeRatio, QUALITY_PIXEL_RATIO_CAP[quality]);
+  return Math.min(safeRatio, BALANCED_PIXEL_RATIO_CAP);
 }
 
 function worldFromFeet(valueFt: number): number {
@@ -883,7 +879,6 @@ export function Viewport() {
   const viewModeRef = useRef(state.viewMode);
   const scrollFlowEnabledRef = useRef(state.ui.scrollFlowEnabled);
   const cutawayEnabledRef = useRef(state.ui.cutawayEnabled);
-  const qualityRef = useRef(state.quality);
   const resetCameraRef = useRef<() => void>(() => {});
   const cameraTourRef = useRef<CameraTourState>({
     layout: null,
@@ -938,7 +933,7 @@ export function Viewport() {
     });
     rendererRef.current = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setPixelRatio(resolvePixelRatio(qualityRef.current, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(resolvePixelRatio(window.devicePixelRatio || 1));
     renderer.setSize(mountElement.clientWidth, mountElement.clientHeight, false);
     mountElement.appendChild(renderer.domElement);
 
@@ -1257,7 +1252,7 @@ export function Viewport() {
 
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(resolvePixelRatio(qualityRef.current, window.devicePixelRatio || 1));
+      renderer.setPixelRatio(resolvePixelRatio(window.devicePixelRatio || 1));
       renderer.setSize(width, height, false);
 
       const tour = cameraTourRef.current;
@@ -2909,23 +2904,6 @@ export function Viewport() {
     applyCutawayRef.current();
     renderSceneRef.current();
   }, [state.ui.cutawayEnabled]);
-
-  useEffect(() => {
-    qualityRef.current = state.quality;
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const mountElement = mountRef.current;
-    const renderer = rendererRef.current;
-    if (!mountElement || !renderer) {
-      return;
-    }
-
-    renderer.setPixelRatio(resolvePixelRatio(state.quality, window.devicePixelRatio || 1));
-    renderer.setSize(mountElement.clientWidth, mountElement.clientHeight, false);
-    renderSceneRef.current();
-  }, [state.quality]);
 
   useEffect(() => {
     if (state.ui.cameraResetNonce <= 0) {

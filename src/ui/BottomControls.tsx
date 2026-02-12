@@ -2,7 +2,6 @@
 
 import React, { useCallback, useState } from "react";
 import { IconButton } from "./IconButton";
-import type { RenderQuality } from "@/state";
 
 export type ViewMode = "orbit" | "pan";
 
@@ -13,24 +12,10 @@ export interface BottomControlsProps {
   onScrollFlowChange: (enabled: boolean) => void;
   cutawayEnabled: boolean;
   onCutawayChange: (enabled: boolean) => void;
-  quality: RenderQuality;
-  onQualityChange: (quality: RenderQuality) => void;
   onResetCamera?: () => void;
   isMinimized?: boolean;
   onMinimizedChange?: (minimized: boolean) => void;
 }
-
-const QUALITY_LABEL: Record<RenderQuality, string> = {
-  performance: "Performance",
-  balanced: "Balanced",
-  quality: "Quality",
-};
-
-const NEXT_QUALITY: Record<RenderQuality, RenderQuality> = {
-  performance: "balanced",
-  balanced: "quality",
-  quality: "performance",
-};
 
 export function BottomControls({
   viewMode,
@@ -39,8 +24,6 @@ export function BottomControls({
   onScrollFlowChange,
   cutawayEnabled,
   onCutawayChange,
-  quality,
-  onQualityChange,
   onResetCamera,
   isMinimized,
   onMinimizedChange,
@@ -135,15 +118,6 @@ export function BottomControls({
       >
         <svg viewBox="0 0 24 24">
           <path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2 5.6 2.8L12 10.8 6.4 8 12 5.2Zm-6 4.4 5 2.5v6.4l-5-2.5V9.6Zm7 8.9V12l5-2.5v6.4l-5 2.5Z" />
-        </svg>
-      </IconButton>
-      <IconButton
-        title={`Render Quality: ${QUALITY_LABEL[quality]} (toggle)`}
-        isActive={quality !== "balanced"}
-        onClick={() => onQualityChange(NEXT_QUALITY[quality])}
-      >
-        <svg viewBox="0 0 24 24">
-          <path d="M15 21h2v-2h-2v2zm4-12h2V7h-2v2zM3 5v14c0 1.1.9 2 2 2h4v-2H5V5h4V3H5c-1.1 0-2 .9-2 2zm16-2v2h2c0-1.1-.9-2-2-2zm-8 20h2V1h-2v22zm8-6h2v-2h-2v2zM15 5h2V3h-2v2zm4 8h2v-2h-2v2zm0 8c1.1 0 2-.9 2-2h-2v2z" />
         </svg>
       </IconButton>
       <button

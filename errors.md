@@ -88,6 +88,13 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Updated slider limits and `PARAM_RANGES` together so normalization tracks the same domain.
 - **Lesson:** Whenever parameter domains change, update both input controls and normalization constants in the same patch.
 
+### [Param dropdown options clipped near panel bottom]
+
+- **Symptom:** Cooling/containment dropdown options near the bottom of the Parameters card could not be fully accessed or clicked.
+- **Root cause:** Left-side cards inherited generic `.panel-specs` overflow constraints, and dropdown placement originally only used viewport room instead of clipping parent bounds, so menus still opened into clipped space.
+- **Fix:** Disabled internal overflow clipping for left-rail cards and updated adaptive dropdown placement to compute available room within clipping scroll containers, flipping upward when below-space is constrained.
+- **Lesson:** Overlay-style menus in constrained panels need both non-clipping parent containers and direction-aware placement logic.
+
 ---
 
 ## Environment & types

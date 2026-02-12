@@ -7,3 +7,17 @@ export type {
   HallRow,
   RowPackingSummary,
 } from "./dataCenter";
+export {
+  buildDefaultCampusFromParams,
+  formatCampusId,
+  formatZoneId,
+  formatHallId,
+  formatRackId,
+} from "./campus";
+export type {
+  Campus,
+  Zone,
+  Hall,
+  Rack,
+  EntityMetadata,
+} from "./campus";

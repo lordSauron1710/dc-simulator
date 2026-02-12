@@ -23,7 +23,6 @@ export default function SandboxPage() {
     setViewMode,
     setCutawayEnabled,
     setScrollFlowEnabled,
-    setQuality,
     resetCamera,
     updateParams,
     toggleDrawer,
@@ -33,18 +32,24 @@ export default function SandboxPage() {
   const [presetsForceMinimized, setPresetsForceMinimized] = useState(false);
   const [presetsExpandedHeight, setPresetsExpandedHeight] = useState(280);
   const [inspectorMaxHeight, setInspectorMaxHeight] = useState<number | null>(null);
-  const [leftPanelMinimized, setLeftPanelMinimized] = useState(false);
+  const [explorerMinimized, setExplorerMinimized] = useState(false);
+  const [paramsMinimized, setParamsMinimized] = useState(false);
   const [inspectorMinimized, setInspectorMinimized] = useState(false);
   const [presetsMinimized, setPresetsMinimized] = useState(false);
   const [controlsMinimized, setControlsMinimized] = useState(false);
 
   const activePresetId = useMemo(() => detectPresetId(state.params), [state.params]);
+  const leftRailMinimized = explorerMinimized && paramsMinimized;
   const rightRailMinimized = inspectorMinimized && presetsMinimized && controlsMinimized;
   const allPanelsMinimized =
-    leftPanelMinimized && inspectorMinimized && presetsMinimized && controlsMinimized;
+    explorerMinimized &&
+    paramsMinimized &&
+    inspectorMinimized &&
+    presetsMinimized &&
+    controlsMinimized;
   const uiLayerClassName = [
     "ui-layer",
-    leftPanelMinimized ? "ui-left-minimized" : "",
+    leftRailMinimized ? "ui-left-minimized" : "",
     rightRailMinimized ? "ui-right-minimized" : "",
   ]
     .filter(Boolean)
@@ -80,7 +85,8 @@ export default function SandboxPage() {
 
   const handleToggleAllPanels = useCallback(() => {
     const nextMinimized = !allPanelsMinimized;
-    setLeftPanelMinimized(nextMinimized);
+    setExplorerMinimized(nextMinimized);
+    setParamsMinimized(nextMinimized);
     setInspectorMinimized(nextMinimized);
     setPresetsMinimized(nextMinimized);
     setControlsMinimized(nextMinimized);
@@ -111,7 +117,6 @@ export default function SandboxPage() {
     state.selection.id,
     state.selection.type,
     state.viewMode,
-    state.quality,
     state.ui.scrollFlowEnabled,
     state.ui.cutawayEnabled,
   ]);
@@ -122,7 +127,8 @@ export default function SandboxPage() {
     }
 
     if (window.matchMedia("(max-width: 900px)").matches) {
-      setLeftPanelMinimized(true);
+      setExplorerMinimized(true);
+      setParamsMinimized(true);
       setInspectorMinimized(true);
       setPresetsMinimized(true);
     }
@@ -204,7 +210,6 @@ export default function SandboxPage() {
     state.selection.id,
     state.selection.type,
     state.params,
-    state.ui.drawerOpen,
   ]);
 
   return (
@@ -215,11 +220,19 @@ export default function SandboxPage() {
         <div className="ui-toolbar" role="toolbar" aria-label="Interface visibility controls">
           <button
             type="button"
-            className={`ui-toolbar-btn ${leftPanelMinimized ? "" : "active"}`}
-            onClick={() => setLeftPanelMinimized((current) => !current)}
-            aria-pressed={!leftPanelMinimized}
+            className={`ui-toolbar-btn ${explorerMinimized ? "" : "active"}`}
+            onClick={() => setExplorerMinimized((current) => !current)}
+            aria-pressed={!explorerMinimized}
           >
             Explorer
+          </button>
+          <button
+            type="button"
+            className={`ui-toolbar-btn ${paramsMinimized ? "" : "active"}`}
+            onClick={() => setParamsMinimized((current) => !current)}
+            aria-pressed={!paramsMinimized}
+          >
+            Params
           </button>
           <button
             type="button"
@@ -255,47 +268,106 @@ export default function SandboxPage() {
         </div>
 
         <div className="panel-left-shell">
-          {leftPanelMinimized ? (
-            <button
-              type="button"
-              className="panel-minimal-toggle panel-left-minimal-toggle"
-              onClick={() => setLeftPanelMinimized(false)}
-              aria-label="Expand explorer and parameters"
-              title="Expand explorer and parameters"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                <rect x="4" y="5" width="16" height="14" rx="1.5" />
-                <path d="M10 5v14" />
-              </svg>
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="inspector-action-btn panel-left-collapse"
-                onClick={() => setLeftPanelMinimized(true)}
-                aria-label="Minimize explorer and parameters"
-                title="Minimize explorer and parameters"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 11h14v2H5z" />
-                </svg>
-              </button>
+          <div className="panel-left-stack">
+            {explorerMinimized ? (
+              <aside className="panel-specs panel-left-card panel-specs-minimal" aria-label="Explorer minimized">
+                <button
+                  type="button"
+                  className="panel-minimal-toggle"
+                  onClick={() => setExplorerMinimized(false)}
+                  aria-label="Expand explorer"
+                  title="Expand explorer"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="14" rx="1.5" />
+                    <path d="M10 5v14" />
+                  </svg>
+                </button>
+              </aside>
+            ) : (
+              <aside className="panel-specs panel-left-card" aria-label="Explorer">
+                <div className="panel-section">
+                  <div className="panel-title panel-title-with-controls">
+                    <span>Explorer</span>
+                    <div className="inspector-actions">
+                      <button
+                        type="button"
+                        className="inspector-action-btn"
+                        onClick={() => setExplorerMinimized(true)}
+                        aria-label="Minimize explorer"
+                        title="Minimize explorer"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M5 11h14v2H5z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="panel-left-card-body panel-left-card-body-explorer">
+                    <ExplorerTree
+                      selection={state.selection}
+                      onSelect={(id, type) => select({ id, type })}
+                      showHeader={false}
+                    />
+                  </div>
+                </div>
+              </aside>
+            )}
 
-              <div className="panel-left">
-                <ExplorerTree
-                  selection={state.selection}
-                  onSelect={(id, type) => select({ id, type })}
-                />
-                <ParamDrawer
-                  params={state.params}
-                  isOpen={state.ui.drawerOpen}
-                  onToggle={toggleDrawer}
-                  onParamsChange={updateParams}
-                />
-              </div>
-            </>
-          )}
+            {paramsMinimized ? (
+              <aside className="panel-specs panel-left-card panel-specs-minimal" aria-label="Parameters minimized">
+                <button
+                  type="button"
+                  className="panel-minimal-toggle"
+                  onClick={() => setParamsMinimized(false)}
+                  aria-label="Expand parameters"
+                  title="Expand parameters"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3.2" />
+                    <path d="M12 4.5v2.1" />
+                    <path d="M12 17.4v2.1" />
+                    <path d="M4.5 12h2.1" />
+                    <path d="M17.4 12h2.1" />
+                    <path d="M6.7 6.7 8.2 8.2" />
+                    <path d="M15.8 15.8 17.3 17.3" />
+                    <path d="M6.7 17.3 8.2 15.8" />
+                    <path d="M15.8 8.2 17.3 6.7" />
+                  </svg>
+                </button>
+              </aside>
+            ) : (
+              <aside className="panel-specs panel-left-card" aria-label="Parameters">
+                <div className="panel-section">
+                  <div className="panel-title panel-title-with-controls">
+                    <span>Parameters</span>
+                    <div className="inspector-actions">
+                      <button
+                        type="button"
+                        className="inspector-action-btn"
+                        onClick={() => setParamsMinimized(true)}
+                        aria-label="Minimize parameters"
+                        title="Minimize parameters"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M5 11h14v2H5z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="panel-left-card-body panel-left-card-body-params">
+                    <ParamDrawer
+                      params={state.params}
+                      isOpen={state.ui.drawerOpen}
+                      onToggle={toggleDrawer}
+                      onParamsChange={updateParams}
+                      showHeader={false}
+                    />
+                  </div>
+                </div>
+              </aside>
+            )}
+          </div>
         </div>
 
         <div />
@@ -330,8 +402,6 @@ export default function SandboxPage() {
             onScrollFlowChange={setScrollFlowEnabled}
             cutawayEnabled={state.ui.cutawayEnabled}
             onCutawayChange={setCutawayEnabled}
-            quality={state.quality}
-            onQualityChange={setQuality}
             onResetCamera={resetCamera}
             isMinimized={controlsMinimized}
             onMinimizedChange={setControlsMinimized}

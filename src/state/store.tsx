@@ -1,12 +1,12 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useMemo, useReducer } from "react";
-import type { AppState, Params, Selection, ViewMode, RenderQuality } from "./types";
+import type { AppState, Campus, Params, Selection, ViewMode } from "./types";
 import type { StoreAction } from "./actions";
 import {
   patchParams,
+  setCampus,
   setSelection,
-  setQuality,
   setCutawayEnabled,
   setScrollFlowEnabled,
   setViewMode,
@@ -21,9 +21,9 @@ interface StoreContextValue {
   dispatch: React.Dispatch<StoreAction>;
   // Convenience actions so consumers don't need action creators
   updateParams: (patch: Partial<Params>) => void;
+  updateCampus: (campus: Campus) => void;
   select: (selection: Selection) => void;
   setViewMode: (mode: ViewMode) => void;
-  setQuality: (quality: RenderQuality) => void;
   setCutawayEnabled: (enabled: boolean) => void;
   setScrollFlowEnabled: (enabled: boolean) => void;
   resetCamera: () => void;
@@ -40,16 +40,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch(patchParams(patch));
   }, []);
 
+  const updateCampus = useCallback((campus: Campus) => {
+    dispatch(setCampus(campus));
+  }, []);
+
   const select = useCallback((selection: Selection) => {
     dispatch(setSelection(selection));
   }, []);
 
   const setViewModeAction = useCallback((mode: ViewMode) => {
     dispatch(setViewMode(mode));
-  }, []);
-
-  const setQualityAction = useCallback((quality: RenderQuality) => {
-    dispatch(setQuality(quality));
   }, []);
 
   const setCutawayEnabledAction = useCallback((enabled: boolean) => {
@@ -77,9 +77,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       state,
       dispatch,
       updateParams,
+      updateCampus,
       select,
       setViewMode: setViewModeAction,
-      setQuality: setQualityAction,
       setCutawayEnabled: setCutawayEnabledAction,
       setScrollFlowEnabled: setScrollFlowEnabledAction,
       resetCamera,
@@ -89,9 +89,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [
       state,
       updateParams,
+      updateCampus,
       select,
       setViewModeAction,
-      setQualityAction,
       setCutawayEnabledAction,
       setScrollFlowEnabledAction,
       resetCamera,

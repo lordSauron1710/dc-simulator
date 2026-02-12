@@ -110,37 +110,6 @@ npm install
 npm run dev
 ```
 
-Local URL:
-
-- App: `http://127.0.0.1:3000`
-
-## Production build and run
-
-```bash
-npm run build
-npm run start
-```
-
-This project uses the default Next.js server output and standard commands, so it is compatible with typical Vercel, Netlify, and Cloud Run deployment flows.
-
-## Scripts
-
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Start Next.js dev server |
-| `npm run build` | Build optimized production bundle |
-| `npm run start` | Run production server |
-| `npm run lint` | Run ESLint |
-
-## Environment variables
-
-No project-specific environment variables are currently required.
-
-| Variable | Scope | Default | Notes |
-|---|---|---|---|
-| `NODE_ENV` | Runtime/build | managed by Next.js | Standard framework mode flag |
-| `NEXT_PUBLIC_*` | Client | unset | Reserved for future client-safe config |
-
 ## Data center parameters
 
 | Category | Parameter | Unit | Description |

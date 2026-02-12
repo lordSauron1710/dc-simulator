@@ -295,26 +295,7 @@ Introduce a typed hierarchical data model for the whole site:
 
 ---
 
-## Prompt 17 — Explorer tree as live campus editor
-
-**Prompt**  
-Replace static explorer entries with data-driven campus hierarchy:
-- Render campus, zones, halls, and racks from state
-- Add actions for add/rename/delete/duplicate on zones/halls/racks
-- Context actions keep parent-child integrity intact
-- Inline validation for names and counts
-
-**Expected output**
-- Explorer shows full expandable hierarchy from live state
-- Users can create and manage new zones and racks through explorer controls
-- Safe delete behavior with confirmation for destructive actions
-
-**Acceptance criteria**
-- Any explorer CRUD action updates state and viewport within 100 ms
-- Tree remains consistent after chained operations (add -> rename -> move/delete)
-- No orphan halls/racks can exist after edits
-
----
+### Feature Cluster — Campus Building Core
 
 ## Prompt 18 — Campus builder panel (structured authoring UX)
 
@@ -422,6 +403,74 @@ Implement robust persistence for editable campus state:
 
 ---
 
+### Feature Cluster — World Building and Environment
+
+## Prompt 17 — Explorer tree as live campus editor
+
+**Prompt**  
+Replace static explorer entries with data-driven campus hierarchy:
+- Render campus, zones, halls, and racks from state
+- Add actions for add/rename/delete/duplicate on zones/halls/racks
+- Context actions keep parent-child integrity intact
+- Inline validation for names and counts
+
+**Expected output**
+- Explorer shows full expandable hierarchy from live state
+- Users can create and manage new zones and racks through explorer controls
+- Safe delete behavior with confirmation for destructive actions
+
+**Acceptance criteria**
+- Any explorer CRUD action updates state and viewport within 100 ms
+- Tree remains consistent after chained operations (add -> rename -> move/delete)
+- No orphan halls/racks can exist after edits
+
+---
+
+## Prompt 27 — Environment system foundation
+
+**Prompt**  
+Add an optional environment layer around the campus:
+- Procedural terrain
+- Grass field generation
+- Tree clusters
+- Wind vector system for environment motion
+
+**Expected output**
+- Environment renderer module under `src/scene/`
+- Parametric generation controls (density, spread, height variance)
+- Toggle to enable/disable environment visibility
+
+**Acceptance criteria**
+- Environment can be switched on/off without rebuilding the page
+- Terrain, grass, and trees scale with campus footprint
+- Wind animation visibly affects grass movement
+
+---
+
+## Prompt 28 — Environment and lighting controls
+
+**Prompt**  
+Expose environment and lighting controls in UI:
+- Terrain roughness/intensity
+- Grass density and wind strength
+- Tree density and variation
+- Lighting controls (ambient intensity, directional light angle, fog strength)
+- Global environment toggle in controls
+
+**Expected output**
+- New parameter section for environment/lighting
+- Real-time update binding from controls to scene
+- Quality-tier aware defaults
+
+**Acceptance criteria**
+- Control changes apply in real time without UI lockups
+- Environment defaults to enabled with quality-aware fallback
+- Performance mode reduces environment detail automatically
+
+---
+
+### Feature Cluster — Runtime Simulation
+
 ## Prompt 23 — Run engine foundation (play/pause/resume/stop)
 
 **Prompt**  
@@ -506,48 +555,7 @@ Add timeline scenario capabilities:
 
 ---
 
-## Prompt 27 — Environment system foundation
-
-**Prompt**  
-Add an optional environment layer around the campus:
-- Procedural terrain
-- Grass field generation
-- Tree clusters
-- Wind vector system for environment motion
-
-**Expected output**
-- Environment renderer module under `src/scene/`
-- Parametric generation controls (density, spread, height variance)
-- Toggle to enable/disable environment visibility
-
-**Acceptance criteria**
-- Environment can be switched on/off without rebuilding the page
-- Terrain, grass, and trees scale with campus footprint
-- Wind animation visibly affects grass movement
-
----
-
-## Prompt 28 — Environment and lighting controls
-
-**Prompt**  
-Expose environment and lighting controls in UI:
-- Terrain roughness/intensity
-- Grass density and wind strength
-- Tree density and variation
-- Lighting controls (ambient intensity, directional light angle, fog strength)
-- Global environment toggle in controls
-
-**Expected output**
-- New parameter section for environment/lighting
-- Real-time update binding from controls to scene
-- Quality-tier aware defaults
-
-**Acceptance criteria**
-- Control changes apply in real time without UI lockups
-- Environment defaults to enabled with quality-aware fallback
-- Performance mode reduces environment detail automatically
-
----
+### Feature Cluster — Stability and Productization
 
 ## Prompt 29 — Performance and stability hardening for v1 scale
 

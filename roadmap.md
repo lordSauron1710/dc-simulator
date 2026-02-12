@@ -295,28 +295,9 @@ Introduce a typed hierarchical data model for the whole site:
 
 ---
 
-## Prompt 17 — Explorer tree as live campus editor
+### Feature Cluster — Campus Building Core
 
-**Prompt**  
-Replace static explorer entries with data-driven campus hierarchy:
-- Render campus, zones, halls, and racks from state
-- Add actions for add/rename/delete/duplicate on zones/halls/racks
-- Context actions keep parent-child integrity intact
-- Inline validation for names and counts
-
-**Expected output**
-- Explorer shows full expandable hierarchy from live state
-- Users can create and manage new zones and racks through explorer controls
-- Safe delete behavior with confirmation for destructive actions
-
-**Acceptance criteria**
-- Any explorer CRUD action updates state and viewport within 100 ms
-- Tree remains consistent after chained operations (add -> rename -> move/delete)
-- No orphan halls/racks can exist after edits
-
----
-
-## Prompt 18 — Campus builder panel (structured authoring UX)
+## Prompt 17 — Campus builder panel (structured authoring UX)
 
 **Prompt**  
 Add a comprehensive campus builder panel:
@@ -338,7 +319,7 @@ Add a comprehensive campus builder panel:
 
 ---
 
-## Prompt 19 — Comprehensive campus synthesis logic
+## Prompt 18 — Comprehensive campus synthesis logic
 
 **Prompt**  
 Implement pure model logic to build the entire campus scene description:
@@ -359,7 +340,7 @@ Implement pure model logic to build the entire campus scene description:
 
 ---
 
-## Prompt 20 — Selection scope logic (rack, zone, campus)
+## Prompt 19 — Selection scope logic (rack, zone, campus)
 
 **Prompt**  
 Implement strict selection-driven visibility behavior:
@@ -380,7 +361,7 @@ Implement strict selection-driven visibility behavior:
 
 ---
 
-## Prompt 21 — Preset system v1 (system + user-defined campus presets)
+## Prompt 20 — Preset system v1 (system + user-defined campus presets)
 
 **Prompt**  
 Upgrade presets to store full campus definitions:
@@ -401,7 +382,7 @@ Upgrade presets to store full campus definitions:
 
 ---
 
-## Prompt 22 — Persistence and sharing (URL + local draft storage)
+## Prompt 21 — Persistence and sharing (URL + local draft storage)
 
 **Prompt**  
 Implement robust persistence for editable campus state:
@@ -422,91 +403,30 @@ Implement robust persistence for editable campus state:
 
 ---
 
-## Prompt 23 — Run engine foundation (play/pause/resume/stop)
+### Feature Cluster — World Building and Environment
+
+## Prompt 22 — Explorer tree as live campus editor
 
 **Prompt**  
-Add a global run system for dynamic operational playback:
-- `Run`, `Pause`, `Resume`, and `Stop` controls
-- Shared timeline clock used by all animations/effects
-- Speed control (for example 0.5x, 1x, 2x)
-- Deterministic behavior for repeatable demonstrations
+Replace static explorer entries with data-driven campus hierarchy:
+- Render campus, zones, halls, and racks from state
+- Add actions for add/rename/delete/duplicate on zones/halls/racks
+- Context actions keep parent-child integrity intact
+- Inline validation for names and counts
 
 **Expected output**
-- Run state in global store with typed actions
-- Bottom control extensions for runtime controls
-- Viewport loop subscribed to run timeline state
+- Explorer shows full expandable hierarchy from live state
+- Users can create and manage new zones and racks through explorer controls
+- Safe delete behavior with confirmation for destructive actions
 
 **Acceptance criteria**
-- Pause freezes all run-driven animations immediately
-- Resume continues from previous frame/time state
-- Stop resets run-driven visuals to baseline state
+- Any explorer CRUD action updates state and viewport within 100 ms
+- Tree remains consistent after chained operations (add -> rename -> move/delete)
+- No orphan halls/racks can exist after edits
 
 ---
 
-## Prompt 24 — Animated operational overlays
-
-**Prompt**  
-Build visual runtime effects for operations mode:
-- Rack sparkle/twinkle effects (green/red server activity)
-- Cooling pipe flow animation with direction/intensity
-- Heatflow/exhaust motion overlays
-- Wind turbine motion and linked utility visuals
-
-**Expected output**
-- Instanced or batched effect layers with low-overhead animation
-- Parameter-linked effect intensity (load, cooling type, containment)
-- Unified pause/play behavior through run engine
-
-**Acceptance criteria**
-- Rack and pipe animations are synchronized to run state
-- Effects degrade gracefully under lower quality tiers
-- No major frame pacing regressions from baseline v0 performance
-
----
-
-## Prompt 25 — Runtime simulation KPIs
-
-**Prompt**  
-Add lightweight simulation dynamics tied to run timeline:
-- KPI drift over simulated time (thermal index, overhead trend, risk flags)
-- Cooling type and containment influence trend behavior
-- Spec panel updates with live runtime stats
-- Reset behavior on `Stop`
-
-**Expected output**
-- Pure simulation step functions separate from rendering code
-- Runtime KPI widgets in specs panel
-- Alert thresholds for hotspot or efficiency warnings
-
-**Acceptance criteria**
-- KPI trends are deterministic for same seed + same inputs
-- Stop returns KPIs to baseline snapshot
-- KPI updates remain responsive without UI stutter
-
----
-
-## Prompt 26 — Scenario timeline authoring
-
-**Prompt**  
-Add timeline scenario capabilities:
-- Create multi-step run sequences (state checkpoints)
-- Scrub timeline position
-- Play/pause per scenario
-- Save scenario with preset context
-
-**Expected output**
-- Scenario model and editing controls
-- Timeline UI with step markers and active-state visualization
-- Scenario playback integrated with run engine and KPI simulation
-
-**Acceptance criteria**
-- Scrubbing updates scene and KPI state correctly
-- Scenario playback is reversible and repeatable
-- Saving/loading scenarios preserves all step definitions
-
----
-
-## Prompt 27 — Environment system foundation
+## Prompt 23 — Environment system foundation
 
 **Prompt**  
 Add an optional environment layer around the campus:
@@ -527,7 +447,7 @@ Add an optional environment layer around the campus:
 
 ---
 
-## Prompt 28 — Environment and lighting controls
+## Prompt 24 — Environment and lighting controls
 
 **Prompt**  
 Expose environment and lighting controls in UI:
@@ -548,6 +468,94 @@ Expose environment and lighting controls in UI:
 - Performance mode reduces environment detail automatically
 
 ---
+
+### Feature Cluster — Runtime Simulation
+
+## Prompt 25 — Run engine foundation (play/pause/resume/stop)
+
+**Prompt**  
+Add a global run system for dynamic operational playback:
+- `Run`, `Pause`, `Resume`, and `Stop` controls
+- Shared timeline clock used by all animations/effects
+- Speed control (for example 0.5x, 1x, 2x)
+- Deterministic behavior for repeatable demonstrations
+
+**Expected output**
+- Run state in global store with typed actions
+- Bottom control extensions for runtime controls
+- Viewport loop subscribed to run timeline state
+
+**Acceptance criteria**
+- Pause freezes all run-driven animations immediately
+- Resume continues from previous frame/time state
+- Stop resets run-driven visuals to baseline state
+
+---
+
+## Prompt 26 — Animated operational overlays
+
+**Prompt**  
+Build visual runtime effects for operations mode:
+- Rack sparkle/twinkle effects (green/red server activity)
+- Cooling pipe flow animation with direction/intensity
+- Heatflow/exhaust motion overlays
+- Wind turbine motion and linked utility visuals
+
+**Expected output**
+- Instanced or batched effect layers with low-overhead animation
+- Parameter-linked effect intensity (load, cooling type, containment)
+- Unified pause/play behavior through run engine
+
+**Acceptance criteria**
+- Rack and pipe animations are synchronized to run state
+- Effects degrade gracefully under lower quality tiers
+- No major frame pacing regressions from baseline v0 performance
+
+---
+
+## Prompt 27 — Runtime simulation KPIs
+
+**Prompt**  
+Add lightweight simulation dynamics tied to run timeline:
+- KPI drift over simulated time (thermal index, overhead trend, risk flags)
+- Cooling type and containment influence trend behavior
+- Spec panel updates with live runtime stats
+- Reset behavior on `Stop`
+
+**Expected output**
+- Pure simulation step functions separate from rendering code
+- Runtime KPI widgets in specs panel
+- Alert thresholds for hotspot or efficiency warnings
+
+**Acceptance criteria**
+- KPI trends are deterministic for same seed + same inputs
+- Stop returns KPIs to baseline snapshot
+- KPI updates remain responsive without UI stutter
+
+---
+
+## Prompt 28 — Scenario timeline authoring
+
+**Prompt**  
+Add timeline scenario capabilities:
+- Create multi-step run sequences (state checkpoints)
+- Scrub timeline position
+- Play/pause per scenario
+- Save scenario with preset context
+
+**Expected output**
+- Scenario model and editing controls
+- Timeline UI with step markers and active-state visualization
+- Scenario playback integrated with run engine and KPI simulation
+
+**Acceptance criteria**
+- Scrubbing updates scene and KPI state correctly
+- Scenario playback is reversible and repeatable
+- Saving/loading scenarios preserves all step definitions
+
+---
+
+### Feature Cluster — Stability and Productization
 
 ## Prompt 29 — Performance and stability hardening for v1 scale
 

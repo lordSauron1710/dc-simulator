@@ -420,6 +420,13 @@ function sampleCameraTour(layout: CameraTourLayout, progress: number): CameraTou
   };
 }
 
+function getZoomOffsetLimits(layout: CameraTourLayout): { min: number; max: number } {
+  return {
+    min: -layout.fitDistance * 0.68,
+    max: layout.fitDistance * 3.4,
+  };
+}
+
 function normalizeSceneParams(params: Params): ParamNorms {
   return {
     critical: normalize(
@@ -926,11 +933,34 @@ export function Viewport() {
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: "high-performance",
-    });
+    const rendererConfigs: Array<THREE.WebGLRendererParameters> = [
+      {
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      },
+      {
+        antialias: false,
+        alpha: false,
+        powerPreference: "default",
+      },
+    ];
+
+    let renderer: THREE.WebGLRenderer | null = null;
+    for (const config of rendererConfigs) {
+      try {
+        renderer = new THREE.WebGLRenderer(config);
+        break;
+      } catch (error) {
+        console.error("WebGL renderer init attempt failed:", error);
+      }
+    }
+
+    if (!renderer) {
+      console.error("Unable to initialize WebGL renderer.");
+      return undefined;
+    }
+
     rendererRef.current = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setPixelRatio(resolvePixelRatio(window.devicePixelRatio || 1));
@@ -1031,7 +1061,14 @@ export function Viewport() {
       tour.progress = resolvedProgress;
 
       const pose = sampleCameraTour(tour.layout, tour.progress);
-      let resolvedDistance = Math.max(0.08, pose.distance + tour.zoomOffset);
+      const zoomLimits = getZoomOffsetLimits(tour.layout);
+      if (tour.zoomOffset < zoomLimits.min || tour.zoomOffset > zoomLimits.max) {
+        tour.zoomOffset = clamp(tour.zoomOffset, zoomLimits.min, zoomLimits.max);
+      }
+
+      const minDistance = Math.max(tour.layout.near * 2.2, tour.layout.radius * 0.18);
+      const maxDistance = Math.max(tour.layout.fitDistance * 4.4, tour.layout.radius * 7.2);
+      let resolvedDistance = clamp(pose.distance + tour.zoomOffset, minDistance, maxDistance);
       yawQuaternion.setFromAxisAngle(WORLD_UP, tour.orbitAzimuth);
       tourDirection.copy(pose.direction).applyQuaternion(yawQuaternion).normalize();
       tourRight.crossVectors(tourDirection, WORLD_UP);
@@ -1087,6 +1124,19 @@ export function Viewport() {
         tour.currentDirection.distanceToSquared(tourDirection) > 1e-6 ||
         Math.abs(tour.currentDistance - resolvedDistance) > 0.0001
       ) {
+        changed = true;
+      }
+
+      if (
+        !Number.isFinite(tourCameraPosition.x) ||
+        !Number.isFinite(tourCameraPosition.y) ||
+        !Number.isFinite(tourCameraPosition.z)
+      ) {
+        tour.zoomOffset = 0;
+        tour.panOffset.set(0, 0, 0);
+        resolvedDistance = pose.distance;
+        tourTarget.copy(pose.target);
+        tourCameraPosition.copy(tourTarget).addScaledVector(tourDirection, resolvedDistance);
         changed = true;
       }
 
@@ -1498,7 +1548,8 @@ export function Viewport() {
       } else {
         const referenceDistance = Math.max(worldFromFeet(2), tour.currentDistance);
         const zoomDelta = event.deltaY * referenceDistance * WHEEL_ZOOM_SENSITIVITY;
-        const nextZoomOffset = tour.zoomOffset + zoomDelta;
+        const zoomLimits = getZoomOffsetLimits(tour.layout);
+        const nextZoomOffset = clamp(tour.zoomOffset + zoomDelta, zoomLimits.min, zoomLimits.max);
         if (Math.abs(nextZoomOffset - tour.zoomOffset) < 0.0001) {
           return;
         }

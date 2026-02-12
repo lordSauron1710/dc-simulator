@@ -10,6 +10,29 @@ export interface DropdownProps {
   width?: number;
 }
 
+function isClippingContainer(element: HTMLElement): boolean {
+  const styles = window.getComputedStyle(element);
+  const overflowValues = [styles.overflow, styles.overflowX, styles.overflowY];
+  return overflowValues.some((value) => /(auto|scroll|hidden|clip)/.test(value));
+}
+
+function getVerticalClipBounds(anchor: HTMLElement): { top: number; bottom: number } {
+  let top = 0;
+  let bottom = window.innerHeight;
+  let current: HTMLElement | null = anchor.parentElement;
+
+  while (current) {
+    if (isClippingContainer(current)) {
+      const bounds = current.getBoundingClientRect();
+      top = Math.max(top, bounds.top);
+      bottom = Math.min(bottom, bounds.bottom);
+    }
+    current = current.parentElement;
+  }
+
+  return { top, bottom };
+}
+
 /**
  * Dropdown component with clickable menu.
  * Displays current value and opens a menu on click.
@@ -22,6 +45,7 @@ export function Dropdown({
   width = 140,
 }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleToggle = useCallback(() => {
@@ -58,6 +82,38 @@ export function Dropdown({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || !dropdownRef.current || !options || options.length === 0) {
+      return;
+    }
+
+    const estimateDirection = () => {
+      if (!dropdownRef.current) {
+        return;
+      }
+
+      const wrapperBounds = dropdownRef.current.getBoundingClientRect();
+      const clipBounds = getVerticalClipBounds(dropdownRef.current);
+      const estimatedOptionHeight = 34;
+      const menuPadding = 8;
+      const menuGap = 4;
+      const estimatedMenuHeight = options.length * estimatedOptionHeight + menuPadding + menuGap;
+      const roomBelow = clipBounds.bottom - wrapperBounds.bottom;
+      const roomAbove = wrapperBounds.top - clipBounds.top;
+
+      setOpenUpward(roomBelow < estimatedMenuHeight && roomAbove > roomBelow);
+    };
+
+    estimateDirection();
+    window.addEventListener("resize", estimateDirection);
+    window.addEventListener("scroll", estimateDirection, true);
+
+    return () => {
+      window.removeEventListener("resize", estimateDirection);
+      window.removeEventListener("scroll", estimateDirection, true);
+    };
+  }, [isOpen, options]);
+
   return (
     <div className="dropdown-wrapper" ref={dropdownRef}>
       {label && <span className="dropdown-label">{label}</span>}
@@ -81,7 +137,10 @@ export function Dropdown({
         </svg>
       </div>
       {isOpen && options && options.length > 0 && (
-        <div className="dropdown-menu" style={{ width: `${width}px` }}>
+        <div
+          className={`dropdown-menu ${openUpward ? "dropdown-menu-up" : ""}`}
+          style={{ width: `${width}px` }}
+        >
           {options.map((option) => (
             <div
               key={option}

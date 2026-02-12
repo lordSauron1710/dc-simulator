@@ -2,14 +2,14 @@
  * Store actions for DC Simulator (Prompt 03).
  */
 
-import type { Params, Selection, ViewMode, UIState, RenderQuality } from "./types";
+import type { Campus, Params, Selection, ViewMode, UIState } from "./types";
 
 export type StoreAction =
   | { type: "SET_PARAMS"; payload: Params }
   | { type: "PATCH_PARAMS"; payload: Partial<Params> }
+  | { type: "SET_CAMPUS"; payload: Campus }
   | { type: "SET_SELECTION"; payload: Selection }
   | { type: "SET_VIEW_MODE"; payload: ViewMode }
-  | { type: "SET_QUALITY"; payload: RenderQuality }
   | { type: "SET_SCROLL_FLOW_ENABLED"; payload: boolean }
   | { type: "SET_CUTAWAY_ENABLED"; payload: boolean }
   | { type: "SET_UI"; payload: Partial<UIState> }
@@ -24,16 +24,16 @@ export function patchParams(payload: Partial<Params>): StoreAction {
   return { type: "PATCH_PARAMS", payload };
 }
 
+export function setCampus(campus: Campus): StoreAction {
+  return { type: "SET_CAMPUS", payload: campus };
+}
+
 export function setSelection(selection: Selection): StoreAction {
   return { type: "SET_SELECTION", payload: selection };
 }
 
 export function setViewMode(viewMode: ViewMode): StoreAction {
   return { type: "SET_VIEW_MODE", payload: viewMode };
-}
-
-export function setQuality(quality: RenderQuality): StoreAction {
-  return { type: "SET_QUALITY", payload: quality };
 }
 
 export function setScrollFlowEnabled(enabled: boolean): StoreAction {

@@ -6,19 +6,30 @@ import type { AppState } from "./types";
 import type { StoreAction } from "./actions";
 import { DEFAULT_STATE } from "./types";
 import { parseStateFromSearch } from "./urlState";
+import { hydrateV1StateFromParsedState, mapV0ParamsToDefaultCampus } from "./migrations";
 
 export function storeReducer(state: AppState, action: StoreAction): AppState {
   switch (action.type) {
     case "SET_PARAMS":
-      return { ...state, params: action.payload };
-    case "PATCH_PARAMS":
-      return { ...state, params: { ...state.params, ...action.payload } };
+      return {
+        ...state,
+        params: action.payload,
+        campus: mapV0ParamsToDefaultCampus(action.payload),
+      };
+    case "PATCH_PARAMS": {
+      const nextParams = { ...state.params, ...action.payload };
+      return {
+        ...state,
+        params: nextParams,
+        campus: mapV0ParamsToDefaultCampus(nextParams),
+      };
+    }
+    case "SET_CAMPUS":
+      return { ...state, campus: action.payload };
     case "SET_SELECTION":
       return { ...state, selection: action.payload };
     case "SET_VIEW_MODE":
       return { ...state, viewMode: action.payload };
-    case "SET_QUALITY":
-      return { ...state, quality: action.payload };
     case "SET_SCROLL_FLOW_ENABLED":
       return {
         ...state,
@@ -49,6 +60,7 @@ export function getInitialState(): AppState {
     params: { ...DEFAULT_STATE.params },
     selection: { ...DEFAULT_STATE.selection },
     ui: { ...DEFAULT_STATE.ui },
+    campus: mapV0ParamsToDefaultCampus(DEFAULT_STATE.params),
   };
 
   if (typeof window === "undefined") {
@@ -56,15 +68,5 @@ export function getInitialState(): AppState {
   }
 
   const parsed = parseStateFromSearch(window.location.search);
-  if (!parsed) {
-    return base;
-  }
-
-  return {
-    ...base,
-    ...parsed,
-    params: { ...base.params, ...(parsed.params ?? {}) },
-    selection: parsed.selection ?? base.selection,
-    ui: { ...base.ui, ...(parsed.ui ?? {}) },
-  };
+  return hydrateV1StateFromParsedState(base, parsed);
 }

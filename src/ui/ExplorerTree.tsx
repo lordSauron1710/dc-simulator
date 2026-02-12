@@ -7,17 +7,19 @@ import type { Selection } from "@/state";
 export interface ExplorerTreeProps {
   selection: Selection;
   onSelect?: (id: string, type: Selection["type"]) => void;
+  showHeader?: boolean;
 }
 
 export function ExplorerTree({
   selection,
   onSelect,
+  showHeader = true,
 }: ExplorerTreeProps) {
   const activeId = selection.id;
 
   return (
-    <aside className="drawer-left">
-      <div className="section-header">EXPLORER</div>
+    <aside className={`drawer-left ${showHeader ? "" : "drawer-left-embedded"}`}>
+      {showHeader ? <div className="section-header">EXPLORER</div> : null}
 
       <TreeItem
         label="Global Campus"

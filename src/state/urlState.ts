@@ -3,7 +3,6 @@ import type {
   CoolingType,
   ContainmentType,
   Params,
-  RenderQuality,
   Redundancy,
   Selection,
   SelectionType,
@@ -19,7 +18,6 @@ const VALID_CONTAINMENT = new Set<ContainmentType>([
   "Full Enclosure",
 ]);
 const VALID_VIEW_MODE = new Set<ViewMode>(["orbit", "pan"]);
-const VALID_QUALITY = new Set<RenderQuality>(["performance", "balanced", "quality"]);
 const VALID_SELECTION_TYPE = new Set<SelectionType>(["building", "hall", "rack", null]);
 
 interface ParamRange {
@@ -148,11 +146,6 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
     ? viewModeCandidate
     : null;
 
-  const qualityCandidate = query.get("rq") as RenderQuality | null;
-  const quality = qualityCandidate && VALID_QUALITY.has(qualityCandidate)
-    ? qualityCandidate
-    : null;
-
   const scrollFlow = parseBoolean(query.get("sf"));
   const cutawayEnabled = parseBoolean(query.get("cw"));
 
@@ -165,9 +158,6 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
   }
   if (viewMode) {
     nextState.viewMode = viewMode;
-  }
-  if (quality) {
-    nextState.quality = quality;
   }
   if (scrollFlow !== null || cutawayEnabled !== null) {
     nextState.ui = {
@@ -197,7 +187,6 @@ export function serializeStateToSearch(state: AppState): string {
   }
 
   query.set("vm", state.viewMode);
-  query.set("rq", state.quality);
   query.set("sf", state.ui.scrollFlowEnabled ? "1" : "0");
   query.set("cw", state.ui.cutawayEnabled ? "1" : "0");
 

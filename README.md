@@ -31,31 +31,6 @@ Next.js App Router page (/)
   -> Viewport (Three.js procedural building, halls, instanced racks, overlays, thermal layers, cutaway, and scroll/orbit/pan camera controls)
 ```
 
-## Repository subway map
-
-```mermaid
-flowchart LR
-  root["dc-simulator/"]
-
-  root --> app["App line: app/"]
-  root --> src["Core line: src/"]
-  root --> docs["Docs line: docs/"]
-
-  app --> a1["page.tsx (sandbox shell)"]
-  app --> a2["Providers.tsx (state provider)"]
-  app --> a3["globals.css (tokens + layout)"]
-
-  src --> s1["ui/ (explorer, drawers, panels, controls)"]
-  src --> s2["state/ (types, reducer, actions, store)"]
-  src --> s3["scene/Viewport.tsx (viewport component)"]
-  src --> s4["model/ (planned pure model functions)"]
-
-  docs --> d1["screenshots/"]
-  root --> r1["roadmap.md (prompt execution tracking)"]
-  root --> r2["errors.md (bug log + lessons)"]
-  root --> r3["AGENTS.md (agent rules)"]
-```
-
 ## Repository layout
 
 ```text

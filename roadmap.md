@@ -297,7 +297,7 @@ Introduce a typed hierarchical data model for the whole site:
 
 ### Feature Cluster — Campus Building Core
 
-## Prompt 18 — Campus builder panel (structured authoring UX)
+## Prompt 17 — Campus builder panel (structured authoring UX)
 
 **Prompt**  
 Add a comprehensive campus builder panel:
@@ -319,7 +319,7 @@ Add a comprehensive campus builder panel:
 
 ---
 
-## Prompt 19 — Comprehensive campus synthesis logic
+## Prompt 18 — Comprehensive campus synthesis logic
 
 **Prompt**  
 Implement pure model logic to build the entire campus scene description:
@@ -340,7 +340,7 @@ Implement pure model logic to build the entire campus scene description:
 
 ---
 
-## Prompt 20 — Selection scope logic (rack, zone, campus)
+## Prompt 19 — Selection scope logic (rack, zone, campus)
 
 **Prompt**  
 Implement strict selection-driven visibility behavior:
@@ -361,7 +361,7 @@ Implement strict selection-driven visibility behavior:
 
 ---
 
-## Prompt 21 — Preset system v1 (system + user-defined campus presets)
+## Prompt 20 — Preset system v1 (system + user-defined campus presets)
 
 **Prompt**  
 Upgrade presets to store full campus definitions:
@@ -382,7 +382,7 @@ Upgrade presets to store full campus definitions:
 
 ---
 
-## Prompt 22 — Persistence and sharing (URL + local draft storage)
+## Prompt 21 — Persistence and sharing (URL + local draft storage)
 
 **Prompt**  
 Implement robust persistence for editable campus state:
@@ -405,7 +405,7 @@ Implement robust persistence for editable campus state:
 
 ### Feature Cluster — World Building and Environment
 
-## Prompt 17 — Explorer tree as live campus editor
+## Prompt 22 — Explorer tree as live campus editor
 
 **Prompt**  
 Replace static explorer entries with data-driven campus hierarchy:
@@ -426,7 +426,7 @@ Replace static explorer entries with data-driven campus hierarchy:
 
 ---
 
-## Prompt 27 — Environment system foundation
+## Prompt 23 — Environment system foundation
 
 **Prompt**  
 Add an optional environment layer around the campus:
@@ -447,7 +447,7 @@ Add an optional environment layer around the campus:
 
 ---
 
-## Prompt 28 — Environment and lighting controls
+## Prompt 24 — Environment and lighting controls
 
 **Prompt**  
 Expose environment and lighting controls in UI:
@@ -471,7 +471,7 @@ Expose environment and lighting controls in UI:
 
 ### Feature Cluster — Runtime Simulation
 
-## Prompt 23 — Run engine foundation (play/pause/resume/stop)
+## Prompt 25 — Run engine foundation (play/pause/resume/stop)
 
 **Prompt**  
 Add a global run system for dynamic operational playback:
@@ -492,7 +492,7 @@ Add a global run system for dynamic operational playback:
 
 ---
 
-## Prompt 24 — Animated operational overlays
+## Prompt 26 — Animated operational overlays
 
 **Prompt**  
 Build visual runtime effects for operations mode:
@@ -513,7 +513,7 @@ Build visual runtime effects for operations mode:
 
 ---
 
-## Prompt 25 — Runtime simulation KPIs
+## Prompt 27 — Runtime simulation KPIs
 
 **Prompt**  
 Add lightweight simulation dynamics tied to run timeline:
@@ -534,7 +534,7 @@ Add lightweight simulation dynamics tied to run timeline:
 
 ---
 
-## Prompt 26 — Scenario timeline authoring
+## Prompt 28 — Scenario timeline authoring
 
 **Prompt**  
 Add timeline scenario capabilities:

@@ -75,6 +75,20 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Restricted hover raycast mapping to core selectable geometry (rack instances, hall shells, building shell) and removed raycast registration from secondary routing branches/lines.
 - **Lesson:** Keep interaction hit proxies minimal and explicit; decorative geometry should usually not be interactive.
 
+### [Scene could disappear after aggressive wheel zoom]
+
+- **Symptom:** The viewport could appear empty/blank even though UI panels and stats still updated.
+- **Root cause:** Camera zoom offset was unbounded, so repeated wheel input could push camera distance outside useful framing range.
+- **Fix:** Added zoom offset clamps, distance clamps during tour-camera updates, and a finite-value recovery fallback that recenters camera math if invalid values appear.
+- **Lesson:** Camera controls need hard constraints and recovery guards; unconstrained zoom can mimic render failures.
+
+### [Renderer init could fail on strict GPU/WebGL contexts]
+
+- **Symptom:** Scene failed to appear and the app could surface a client-side exception in environments with constrained WebGL support.
+- **Root cause:** Renderer initialization used one aggressive configuration only (`antialias` + high-performance preference), and context creation failures were not retried.
+- **Fix:** Added multi-attempt renderer initialization with a lighter fallback config and graceful failure handling instead of uncaught exceptions.
+- **Lesson:** WebGL setup should use progressive fallbacks; one renderer profile is not reliable across all runtime environments.
+
 ---
 
 ## State & params

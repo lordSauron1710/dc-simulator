@@ -8,6 +8,8 @@ export interface PresetsPanelProps {
   onApplyPreset: (presetId: PresetId) => void;
   onCopyShareLink: () => Promise<boolean>;
   forceMinimized?: boolean;
+  isMinimized?: boolean;
+  onMinimizedChange?: (minimized: boolean) => void;
   onExpandedHeightChange?: (height: number) => void;
 }
 
@@ -16,12 +18,25 @@ export function PresetsPanel({
   onApplyPreset,
   onCopyShareLink,
   forceMinimized = false,
+  isMinimized,
+  onMinimizedChange,
   onExpandedHeightChange,
 }: PresetsPanelProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [internalMinimized, setInternalMinimized] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const panelRef = useRef<HTMLElement | null>(null);
-  const effectiveMinimized = forceMinimized || isMinimized;
+  const manualMinimized = isMinimized ?? internalMinimized;
+  const effectiveMinimized = forceMinimized || manualMinimized;
+
+  const setManualMinimized = useCallback(
+    (next: boolean) => {
+      if (isMinimized === undefined) {
+        setInternalMinimized(next);
+      }
+      onMinimizedChange?.(next);
+    },
+    [isMinimized, onMinimizedChange]
+  );
 
   const handleCopyShare = useCallback(async () => {
     const copied = await onCopyShareLink();
@@ -62,7 +77,7 @@ export function PresetsPanel({
           className="panel-minimal-toggle"
           onClick={() => {
             if (!forceMinimized) {
-              setIsMinimized(false);
+              setManualMinimized(false);
             }
           }}
           aria-label="Expand presets"
@@ -86,7 +101,7 @@ export function PresetsPanel({
             <button
               type="button"
               className="inspector-action-btn"
-              onClick={() => setIsMinimized(true)}
+              onClick={() => setManualMinimized(true)}
               aria-label="Minimize presets"
               title="Minimize presets"
             >

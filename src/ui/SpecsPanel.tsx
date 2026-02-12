@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { computeDataCenter, type HallDescription } from "@/model";
 import { useStore, type SelectionType } from "@/state";
 
-type InspectorView = "full" | "key" | "minimal";
+type InspectorView = "full" | "key";
 type SelectionProfileType = "building" | "hall" | "rack" | "none";
 
 interface SelectionContext {
@@ -20,6 +20,11 @@ interface SelectionContext {
 interface ProfileRow {
   label: string;
   value: string;
+}
+
+export interface SpecsPanelProps {
+  isMinimized?: boolean;
+  onMinimizedChange?: (minimized: boolean) => void;
 }
 
 function formatPower(valueMW: number): string {
@@ -263,11 +268,23 @@ function buildProfileRows(
   ];
 }
 
-export function SpecsPanel() {
+export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps = {}) {
   const { state } = useStore();
   const { params, selection } = state;
   const [view, setView] = useState<InspectorView>("key");
+  const [internalMinimized, setInternalMinimized] = useState(false);
   const model = useMemo(() => computeDataCenter(params), [params]);
+  const minimized = isMinimized ?? internalMinimized;
+
+  const setMinimized = useCallback(
+    (next: boolean) => {
+      if (isMinimized === undefined) {
+        setInternalMinimized(next);
+      }
+      onMinimizedChange?.(next);
+    },
+    [isMinimized, onMinimizedChange]
+  );
 
   const totalRacks = model.rackCount;
   const racksPerHall =
@@ -322,22 +339,24 @@ export function SpecsPanel() {
   );
 
   const stepDown = () => {
-    setView((current) => {
-      if (current === "full") return "key";
-      if (current === "key") return "minimal";
-      return "minimal";
-    });
+    if (view === "full") {
+      setView("key");
+      return;
+    }
+    setMinimized(true);
   };
 
   const stepUp = () => {
-    setView((current) => {
-      if (current === "minimal") return "key";
-      if (current === "key") return "full";
-      return "full";
-    });
+    if (minimized) {
+      setMinimized(false);
+      return;
+    }
+    if (view === "key") {
+      setView("full");
+    }
   };
 
-  if (view === "minimal") {
+  if (minimized) {
     return (
       <aside className="panel-specs panel-specs-minimal" aria-label="Inspector minimized">
         <button

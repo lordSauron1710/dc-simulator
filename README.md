@@ -18,6 +18,7 @@ Live deployment: [dc-simulator-omega.vercel.app](https://dc-simulator-omega.verc
 - Uses industry-aligned data center terminology (critical load, PUE, redundancy, containment).
 - Keeps model-facing inputs typed and centralized via a React Context + reducer store.
 - Includes cutaway mode, scenario presets, and copyable URL state for reproducible views.
+- Adds mobile-friendly overlay behavior with quick panel toggles and one-tap "minimize all" UI controls.
 - Maintains a deployment-friendly Next.js setup with standard build/start commands.
 
 ## Architecture

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { IconButton } from "./IconButton";
 import type { RenderQuality } from "@/state";
 
@@ -16,6 +16,8 @@ export interface BottomControlsProps {
   quality: RenderQuality;
   onQualityChange: (quality: RenderQuality) => void;
   onResetCamera?: () => void;
+  isMinimized?: boolean;
+  onMinimizedChange?: (minimized: boolean) => void;
 }
 
 const QUALITY_LABEL: Record<RenderQuality, string> = {
@@ -40,16 +42,29 @@ export function BottomControls({
   quality,
   onQualityChange,
   onResetCamera,
+  isMinimized,
+  onMinimizedChange,
 }: BottomControlsProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [internalMinimized, setInternalMinimized] = useState(false);
+  const minimized = isMinimized ?? internalMinimized;
 
-  if (isMinimized) {
+  const setMinimized = useCallback(
+    (next: boolean) => {
+      if (isMinimized === undefined) {
+        setInternalMinimized(next);
+      }
+      onMinimizedChange?.(next);
+    },
+    [isMinimized, onMinimizedChange]
+  );
+
+  if (minimized) {
     return (
       <nav className="controls-bottom controls-bottom-minimal" aria-label="View and camera controls minimized">
         <button
           type="button"
           className="panel-minimal-toggle"
-          onClick={() => setIsMinimized(false)}
+          onClick={() => setMinimized(false)}
           aria-label="Expand camera controls"
           title="Expand camera controls"
           data-tooltip="Expand camera controls"
@@ -134,7 +149,7 @@ export function BottomControls({
       <button
         type="button"
         className="inspector-action-btn controls-bottom-collapse"
-        onClick={() => setIsMinimized(true)}
+        onClick={() => setMinimized(true)}
         aria-label="Minimize camera controls"
         title="Minimize controls"
         data-tooltip="Minimize controls"

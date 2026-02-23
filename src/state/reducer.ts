@@ -5,11 +5,12 @@
 import type { AppState } from "./types";
 import type { StoreAction } from "./actions";
 import { DEFAULT_STATE } from "./types";
-import { parseStateFromSearch } from "./urlState";
 import { hydrateV1StateFromParsedState, mapV0ParamsToDefaultCampus } from "./migrations";
 
 export function storeReducer(state: AppState, action: StoreAction): AppState {
   switch (action.type) {
+    case "HYDRATE_FROM_URL":
+      return hydrateV1StateFromParsedState(state, action.payload);
     case "SET_PARAMS":
       return {
         ...state,
@@ -26,6 +27,12 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
     }
     case "SET_CAMPUS":
       return { ...state, campus: action.payload };
+    case "SET_CAMPUS_AND_PARAMS":
+      return {
+        ...state,
+        campus: action.payload.campus,
+        params: action.payload.params,
+      };
     case "SET_SELECTION":
       return { ...state, selection: action.payload };
     case "SET_VIEW_MODE":
@@ -62,11 +69,5 @@ export function getInitialState(): AppState {
     ui: { ...DEFAULT_STATE.ui },
     campus: mapV0ParamsToDefaultCampus(DEFAULT_STATE.params),
   };
-
-  if (typeof window === "undefined") {
-    return base;
-  }
-
-  const parsed = parseStateFromSearch(window.location.search);
-  return hydrateV1StateFromParsedState(base, parsed);
+  return base;
 }

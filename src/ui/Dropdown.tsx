@@ -7,7 +7,7 @@ export interface DropdownProps {
   value: string;
   options?: string[];
   onChange?: (value: string) => void;
-  width?: number;
+  width?: number | string;
 }
 
 function isClippingContainer(element: HTMLElement): boolean {
@@ -42,7 +42,7 @@ export function Dropdown({
   value,
   options,
   onChange,
-  width = 140,
+  width = "100%",
 }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
@@ -114,12 +114,14 @@ export function Dropdown({
     };
   }, [isOpen, options]);
 
+  const resolvedWidth = typeof width === "number" ? `${width}px` : width;
+
   return (
     <div className="dropdown-wrapper" ref={dropdownRef}>
       {label && <span className="dropdown-label">{label}</span>}
       <div
         className="dropdown"
-        style={{ width: `${width}px` }}
+        style={{ width: resolvedWidth }}
         onClick={handleToggle}
       >
         <span>{value}</span>
@@ -139,7 +141,7 @@ export function Dropdown({
       {isOpen && options && options.length > 0 && (
         <div
           className={`dropdown-menu ${openUpward ? "dropdown-menu-up" : ""}`}
-          style={{ width: `${width}px` }}
+          style={{ width: resolvedWidth }}
         >
           {options.map((option) => (
             <div

@@ -122,6 +122,13 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Installed `@types/three` as a dev dependency so strict type checking can compile scene files.
 - **Lesson:** When adding new runtime libraries in strict TS projects, verify declaration packages are present before final build validation.
 
+### [TypeScript looked for non-existent implicit type library `react 2`]
+
+- **Symptom:** `npm run build` failed during type-checking with `Cannot find type definition file for 'react 2'`.
+- **Root cause:** A duplicate folder named `node_modules/@types/react 2` existed locally, so TypeScript treated it as an implicit type library entry.
+- **Fix:** Removed the stray `react 2` directory from `node_modules/@types` and reran the build.
+- **Lesson:** If TypeScript reports an unexpected implicit type library name, inspect `node_modules/@types` for accidental duplicate folders (especially names with suffixes like ` 2`).
+
 ---
 
 ## Build & deploy

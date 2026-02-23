@@ -10,7 +10,9 @@ export type { StoreAction } from "./actions";
 export {
   setParams,
   patchParams,
+  hydrateFromUrl,
   setCampus,
+  setCampusAndParams,
   setSelection,
   setCutawayEnabled,
   setScrollFlowEnabled,

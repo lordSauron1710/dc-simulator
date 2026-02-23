@@ -9,16 +9,17 @@ Live deployment: [dc-simulator-omega.vercel.app](https://dc-simulator-omega.verc
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
 [![Roadmap](https://img.shields.io/badge/Roadmap-01--15%20executed-blue)](roadmap.md)
 
-![DC Simulator UI (Vercel Live)](docs/screenshots/ui_vercel_live.png)
+![DC Simulator UI (Campus Builder)](docs/screenshots/ui-campus-builder-v1.png)
 
 ## What it does
 
-- Provides a dark-canvas sandbox UI for exploring data center entities with rack, hall, and building selection.
-- Exposes key facility, IT, and MEP parameters through sliders/dropdowns with immediate state updates.
+- Provides a dark-canvas sandbox UI with a left-rail authoring workspace that separates structural campus building from rack-parameter tuning.
+- Supports hierarchy-first modeling (`Campus -> Zone -> Data Hall -> Rack count`) with direct inline add/remove actions.
+- Exposes rack-module technical controls at campus, zone, or individual hall scope with immediate scene/spec updates.
 - Uses industry-aligned data center terminology (critical load, PUE, redundancy, containment).
 - Keeps model-facing inputs typed and centralized via a React Context + reducer store.
 - Adds a typed v1 campus hierarchy (`Campus -> Zone -> Hall -> Rack`) with v0-compatible hydration.
-- Includes cutaway mode, scenario presets, and copyable URL state for reproducible views.
+- Includes cutaway mode, scenario presets, and URL-synced state for reproducible views.
 - Adds mobile-friendly overlay behavior with quick panel toggles and one-tap "minimize all" UI controls.
 - Maintains a deployment-friendly Next.js setup with standard build/start commands.
 
@@ -27,7 +28,7 @@ Live deployment: [dc-simulator-omega.vercel.app](https://dc-simulator-omega.verc
 ```text
 Next.js App Router page (/)
   -> StoreProvider (typed app state)
-  -> ExplorerTree + ParamDrawer + SpecsPanel + BottomControls
+  -> Authoring Workspace (CampusBuilderPanel + CampusParametersPanel tabs) + SpecsPanel + BottomControls
   -> Viewport (Three.js procedural building, halls, instanced racks, overlays, thermal layers, cutaway, and scroll/orbit/pan camera controls)
 ```
 
@@ -45,6 +46,7 @@ dc-simulator/
 ├── src/
 │   ├── model/
 │   │   ├── campus.ts
+│   │   ├── campusBuilder.ts
 │   │   └── dataCenter.ts
 │   ├── scene/
 │   │   └── Viewport.tsx
@@ -59,6 +61,8 @@ dc-simulator/
 │   │   └── urlState.ts
 │   └── ui/
 │       ├── BottomControls.tsx
+│       ├── CampusBuilderPanel.tsx
+│       ├── CampusParametersPanel.tsx
 │       ├── Dropdown.tsx
 │       ├── ExplorerTree.tsx
 │       ├── IconButton.tsx

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { computeDataCenter, type HallDescription } from "@/model";
+import { computeDataCenterFromCampus, type HallDescription } from "@/model";
 import { useStore, type SelectionType } from "@/state";
 
 type InspectorView = "full" | "key";
@@ -270,10 +270,10 @@ function buildProfileRows(
 
 export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps = {}) {
   const { state } = useStore();
-  const { params, selection } = state;
+  const { params, campus, selection } = state;
   const [view, setView] = useState<InspectorView>("key");
   const [internalMinimized, setInternalMinimized] = useState(false);
-  const model = useMemo(() => computeDataCenter(params), [params]);
+  const model = useMemo(() => computeDataCenterFromCampus(campus, params), [campus, params]);
   const minimized = isMinimized ?? internalMinimized;
 
   const setMinimized = useCallback(

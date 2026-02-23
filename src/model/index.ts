@@ -37,6 +37,7 @@ export {
   CAMPUS_PARAM_LIMITS,
   computeDataCenterFromCampus,
   deriveParamsFromCampus,
+  deriveParamsFromReconciledCampus,
   reconcileCampus,
   validateCampus,
 } from "./campusBuilder";

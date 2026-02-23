@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  deriveParamsFromCampus,
+  deriveParamsFromReconciledCampus,
   formatHallId,
   formatRackGroupId,
   formatZoneId,
@@ -275,7 +275,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
       if (nextIssues.length === 0) {
         const reconciled = reconcileCampus(next);
         setDraft(reconciled);
-        onCampusChange(reconciled, deriveParamsFromCampus(reconciled, params));
+        onCampusChange(reconciled, deriveParamsFromReconciledCampus(reconciled, params));
         return;
       }
 

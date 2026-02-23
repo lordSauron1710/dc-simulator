@@ -5,7 +5,7 @@ import { Dropdown } from "./Dropdown";
 import {
   applyCampusPropertyPatch,
   applyRackProfilePatchByScope,
-  deriveParamsFromCampus,
+  deriveParamsFromReconciledCampus,
   reconcileCampus,
   validateCampus,
 } from "@/model";
@@ -194,7 +194,7 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
       return;
     }
 
-    onCampusChange(reconciled, deriveParamsFromCampus(reconciled, params));
+    onCampusChange(reconciled, deriveParamsFromReconciledCampus(reconciled, params));
   };
 
   const applyRackProfilePatch = (patch: {

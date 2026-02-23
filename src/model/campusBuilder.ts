@@ -29,6 +29,8 @@ export const CAMPUS_PARAM_LIMITS = {
 } as const;
 
 const DEFAULT_RACKS_PER_ROW = 18;
+const CAMPUS_MODEL_CACHE_PER_CAMPUS_LIMIT = 6;
+const campusModelCache = new WeakMap<Campus, Map<string, DataCenterModel>>();
 
 export type ParameterScopeLevel = "campus" | "zone" | "hall";
 
@@ -123,14 +125,9 @@ function resolveHallRackCount(hall: Hall): number {
   return toPositiveInteger(hall.rackCount, 1);
 }
 
-function resolveMode<T extends string>(values: T[], fallback: T): T {
-  if (values.length === 0) {
+function resolveModeFromCounts<T extends string>(counts: Map<T, number>, fallback: T): T {
+  if (counts.size === 0) {
     return fallback;
-  }
-
-  const counts = new Map<T, number>();
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
   }
 
   let bestValue = fallback;
@@ -143,6 +140,39 @@ function resolveMode<T extends string>(values: T[], fallback: T): T {
   });
 
   return bestValue;
+}
+
+function incrementModeCount<T extends string>(counts: Map<T, number>, value: T): void {
+  counts.set(value, (counts.get(value) ?? 0) + 1);
+}
+
+function createParamsCacheKey(params: Params): string {
+  return [
+    params.criticalLoadMW.toFixed(4),
+    Math.round(params.whitespaceAreaSqFt).toString(),
+    Math.round(params.dataHalls).toString(),
+    params.whitespaceRatio.toFixed(4),
+    params.rackPowerDensity.toFixed(4),
+    params.redundancy,
+    params.pue.toFixed(4),
+    params.coolingType,
+    params.containment,
+  ].join("|");
+}
+
+function cacheCampusModel(campus: Campus, cacheKey: string, model: DataCenterModel): void {
+  let cacheForCampus = campusModelCache.get(campus);
+  if (!cacheForCampus) {
+    cacheForCampus = new Map<string, DataCenterModel>();
+    campusModelCache.set(campus, cacheForCampus);
+  }
+  if (cacheForCampus.size >= CAMPUS_MODEL_CACHE_PER_CAMPUS_LIMIT && !cacheForCampus.has(cacheKey)) {
+    const oldestKey = cacheForCampus.keys().next().value;
+    if (typeof oldestKey === "string") {
+      cacheForCampus.delete(oldestKey);
+    }
+  }
+  cacheForCampus.set(cacheKey, model);
 }
 
 function normalizeRackProfilePatch(patch: RackProfilePatch): RackProfilePatch {
@@ -355,27 +385,32 @@ export function reconcileCampus(campus: Campus): Campus {
   };
 }
 
-export function deriveParamsFromCampus(campus: Campus, fallback: Params): Params {
-  const normalized = reconcileCampus(campus);
-  const halls = normalized.zones.flatMap((zone) => zone.halls);
-  const hallCount = Math.max(1, halls.length);
-  const totalRacks = halls.reduce((sum, hall) => sum + hall.rackCount, 0);
-  const criticalKw = halls.reduce((sum, hall) => sum + hall.rackCount * hall.profile.rackDensityKW, 0);
+export function deriveParamsFromReconciledCampus(normalized: Campus, fallback: Params): Params {
+  let hallCount = 0;
+  let totalRacks = 0;
+  let criticalKw = 0;
+  const redundancyCounts = new Map<RedundancyProfile, number>();
+  const coolingCounts = new Map<CoolingProfile, number>();
+  const containmentCounts = new Map<ContainmentProfile, number>();
+
+  for (const zone of normalized.zones) {
+    for (const hall of zone.halls) {
+      hallCount += 1;
+      totalRacks += hall.rackCount;
+      criticalKw += hall.rackCount * hall.profile.rackDensityKW;
+      incrementModeCount(redundancyCounts, hall.profile.redundancy);
+      incrementModeCount(coolingCounts, hall.profile.coolingType);
+      incrementModeCount(containmentCounts, hall.profile.containment);
+    }
+  }
+
+  const clampedHallCount = Math.max(1, hallCount);
   const averageDensity = totalRacks > 0 ? criticalKw / totalRacks : fallback.rackPowerDensity;
   const criticalLoadMW = criticalKw / 1000;
 
-  const redundancy = resolveMode<RedundancyProfile>(
-    halls.map((hall) => hall.profile.redundancy),
-    fallback.redundancy
-  );
-  const coolingType = resolveMode<CoolingProfile>(
-    halls.map((hall) => hall.profile.coolingType),
-    fallback.coolingType
-  );
-  const containment = resolveMode<ContainmentProfile>(
-    halls.map((hall) => hall.profile.containment),
-    fallback.containment
-  );
+  const redundancy = resolveModeFromCounts<RedundancyProfile>(redundancyCounts, fallback.redundancy);
+  const coolingType = resolveModeFromCounts<CoolingProfile>(coolingCounts, fallback.coolingType);
+  const containment = resolveModeFromCounts<ContainmentProfile>(containmentCounts, fallback.containment);
 
   const whitespaceRatio = clamp(
     normalized.properties.whitespaceRatio,
@@ -391,7 +426,7 @@ export function deriveParamsFromCampus(campus: Campus, fallback: Params): Params
   return {
     criticalLoadMW: roundTo(clamp(criticalLoadMW, CAMPUS_PARAM_LIMITS.criticalLoadMW.min, CAMPUS_PARAM_LIMITS.criticalLoadMW.max), 2),
     whitespaceAreaSqFt,
-    dataHalls: clamp(hallCount, CAMPUS_PARAM_LIMITS.dataHalls.min, CAMPUS_PARAM_LIMITS.dataHalls.max),
+    dataHalls: clamp(clampedHallCount, CAMPUS_PARAM_LIMITS.dataHalls.min, CAMPUS_PARAM_LIMITS.dataHalls.max),
     whitespaceRatio: roundTo(whitespaceRatio, 2),
     rackPowerDensity: roundTo(clamp(averageDensity, CAMPUS_PARAM_LIMITS.rackPowerDensity.min, CAMPUS_PARAM_LIMITS.rackPowerDensity.max), 2),
     redundancy,
@@ -402,6 +437,10 @@ export function deriveParamsFromCampus(campus: Campus, fallback: Params): Params
     coolingType,
     containment,
   };
+}
+
+export function deriveParamsFromCampus(campus: Campus, fallback: Params): Params {
+  return deriveParamsFromReconciledCampus(reconcileCampus(campus), fallback);
 }
 
 function buildRows(hallIndex: number, rackCount: number, maxRows: number, maxRacksPerRow: number): { rows: HallRow[]; rowCount: number } {
@@ -432,63 +471,81 @@ function buildRows(hallIndex: number, rackCount: number, maxRows: number, maxRac
 }
 
 export function computeDataCenterFromCampus(campus: Campus, fallback: Params): DataCenterModel {
-  const normalized = reconcileCampus(campus);
-  const params = deriveParamsFromCampus(normalized, fallback);
-  const base = computeDataCenter(params);
-  const configuredHalls = normalized.zones.flatMap((zone) => zone.halls);
+  // Assumes immutable campus objects from store updates; repeated calls with the same campus reference
+  // are frequent (Specs + Viewport), so cache by object identity for cheap reuse.
+  const fallbackKey = createParamsCacheKey(fallback);
+  const cachedForCampus = campusModelCache.get(campus)?.get(fallbackKey);
+  if (cachedForCampus) {
+    return cachedForCampus;
+  }
 
-  if (configuredHalls.length === 0) {
+  const normalized = reconcileCampus(campus);
+  const params = deriveParamsFromReconciledCampus(normalized, fallback);
+  const base = computeDataCenter(params);
+
+  const halls: DataCenterModel["halls"] = [];
+  const hallRackDistribution: number[] = [];
+  let rackCursor = 1;
+  let rackCount = 0;
+  let rackCapacityBySpace = 0;
+  let criticalKw = 0;
+  let baseHallIndex = 0;
+
+  for (const zone of normalized.zones) {
+    for (const hall of zone.halls) {
+      const baseHall = base.halls[baseHallIndex];
+      baseHallIndex += 1;
+
+      const capacity = baseHall ? baseHall.capacity : hall.rackCount;
+      const assignedRackCount = Math.min(hall.rackCount, capacity);
+      const rackStartIndex = assignedRackCount > 0 ? rackCursor : 0;
+      const rackEndIndex = assignedRackCount > 0 ? rackCursor + assignedRackCount - 1 : 0;
+      if (assignedRackCount > 0) {
+        rackCursor = rackEndIndex + 1;
+      }
+
+      const maxRows = baseHall?.packing.maxRows ?? Math.max(1, Math.ceil(assignedRackCount / DEFAULT_RACKS_PER_ROW));
+      const maxRacksPerRow = baseHall?.packing.maxRacksPerRow ?? DEFAULT_RACKS_PER_ROW;
+      const packed = buildRows(hall.hallIndex, assignedRackCount, maxRows, maxRacksPerRow);
+
+      halls.push({
+        id: hall.id,
+        hallIndex: hall.hallIndex,
+        rackCount: assignedRackCount,
+        rackStartIndex,
+        rackEndIndex,
+        whitespaceSqFt: baseHall?.whitespaceSqFt ?? 0,
+        grossSqFt: baseHall?.grossSqFt ?? 0,
+        capacity,
+        dimensionsFt: baseHall?.dimensionsFt ?? { width: 0, length: 0 },
+        packing: {
+          rowCount: packed.rowCount,
+          maxRows,
+          targetRacksPerRow: DEFAULT_RACKS_PER_ROW,
+          maxRacksPerRow,
+        },
+        rows: packed.rows,
+      });
+
+      hallRackDistribution.push(assignedRackCount);
+      rackCount += assignedRackCount;
+      rackCapacityBySpace += capacity;
+      criticalKw += assignedRackCount * hall.profile.rackDensityKW;
+    }
+  }
+
+  if (halls.length === 0) {
+    cacheCampusModel(campus, fallbackKey, base);
     return base;
   }
 
-  let rackCursor = 1;
-  const halls = configuredHalls.map((hall, index) => {
-    const baseHall = base.halls[index];
-    const capacity = baseHall ? baseHall.capacity : hall.rackCount;
-    const rackCount = Math.min(hall.rackCount, capacity);
-    const rackStartIndex = rackCount > 0 ? rackCursor : 0;
-    const rackEndIndex = rackCount > 0 ? rackCursor + rackCount - 1 : 0;
-    if (rackCount > 0) {
-      rackCursor = rackEndIndex + 1;
-    }
-
-    const maxRows = baseHall?.packing.maxRows ?? Math.max(1, Math.ceil(rackCount / DEFAULT_RACKS_PER_ROW));
-    const maxRacksPerRow = baseHall?.packing.maxRacksPerRow ?? DEFAULT_RACKS_PER_ROW;
-    const packed = buildRows(hall.hallIndex, rackCount, maxRows, maxRacksPerRow);
-
-    return {
-      id: hall.id,
-      hallIndex: hall.hallIndex,
-      rackCount,
-      rackStartIndex,
-      rackEndIndex,
-      whitespaceSqFt: baseHall?.whitespaceSqFt ?? 0,
-      grossSqFt: baseHall?.grossSqFt ?? 0,
-      capacity,
-      dimensionsFt: baseHall?.dimensionsFt ?? { width: 0, length: 0 },
-      packing: {
-        rowCount: packed.rowCount,
-        maxRows,
-        targetRacksPerRow: DEFAULT_RACKS_PER_ROW,
-        maxRacksPerRow,
-      },
-      rows: packed.rows,
-    };
-  });
-
-  const hallRackDistribution = halls.map((hall) => hall.rackCount);
-  const rackCount = hallRackDistribution.reduce((sum, value) => sum + value, 0);
-  const rackCapacityBySpace = halls.reduce((sum, hall) => sum + hall.capacity, 0);
-  const criticalKw = configuredHalls.reduce((sum, hall, index) => {
-    return sum + halls[index].rackCount * hall.profile.rackDensityKW;
-  }, 0);
   const criticalITMW = roundTo(criticalKw / 1000, 2);
   const totalFacilityMW = roundTo(criticalITMW * params.pue, 2);
   const nonITOverheadMW = roundTo(Math.max(0, totalFacilityMW - criticalITMW), 2);
   const averageDensity = rackCount > 0 ? criticalKw / rackCount : params.rackPowerDensity;
   const rackCountFromPower = Math.max(1, Math.round((criticalITMW * 1000) / Math.max(averageDensity, 0.1)));
 
-  return {
+  const model: DataCenterModel = {
     facilityLoad: {
       criticalITMW,
       totalFacilityMW,
@@ -501,6 +558,10 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
     hallRackDistribution,
     halls,
   };
+
+  cacheCampusModel(campus, fallbackKey, model);
+
+  return model;
 }
 
 export function validateCampus(campus: Campus): CampusValidationIssue[] {

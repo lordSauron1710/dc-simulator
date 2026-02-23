@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import {
   applyCampusPropertyPatch,
   applyRackProfilePatchByScope,
+  buildDefaultCampusFromParams,
   CAMPUS_PARAM_LIMITS,
   computeDataCenterFromCampus,
   deriveParamsFromCampus,
+  deriveParamsFromReconciledCampus,
   reconcileCampus,
   validateCampus,
   type Campus,
+  type CoolingProfile,
+  type ContainmentProfile,
   type CampusParameterScope,
   type RackProfilePatch,
+  type RedundancyProfile,
 } from "@/model";
 import { DEFAULT_PARAMS } from "@/state";
 import { createCampusFixture, flattenHalls } from "@/test/fixtures/campusFixture";
@@ -24,6 +29,120 @@ function expectedDensity(value: number): number {
     Math.max(CAMPUS_PARAM_LIMITS.rackPowerDensity.min, value)
   );
   return Math.round(clamped * 100) / 100;
+}
+
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+function randomInt(rand: () => number, min: number, max: number): number {
+  return min + Math.floor(rand() * (max - min + 1));
+}
+
+function pickFromList<T>(rand: () => number, values: T[]): T {
+  return values[randomInt(rand, 0, values.length - 1)];
+}
+
+function createLargeCampus(seed = 17): Campus {
+  const rand = createSeededRandom(seed);
+  const base = buildDefaultCampusFromParams(DEFAULT_PARAMS);
+  const templateZone = base.zones[0];
+  const templateHall = templateZone.halls[0];
+  const redundancies: RedundancyProfile[] = ["N", "N+1", "2N"];
+  const containments: ContainmentProfile[] = ["None", "Hot Aisle", "Cold Aisle", "Full Enclosure"];
+  const coolingProfiles: CoolingProfile[] = ["Air-Cooled", "DLC", "Hybrid"];
+
+  const zoneCount = 6;
+  const hallsPerZone = 12;
+  let hallIndex = 1;
+
+  const zones = Array.from({ length: zoneCount }, (_, zoneIndex) => {
+    const minRackCount = randomInt(rand, 4, 24);
+    const maxRackCount = randomInt(rand, 300, 450);
+    const defaultRackCount = randomInt(rand, minRackCount, maxRackCount);
+    const step = randomInt(rand, 1, 8);
+
+    const hallDefaults = {
+      rackDensityKW: randomInt(rand, 6, 40),
+      redundancy: pickFromList(rand, redundancies),
+      containment: pickFromList(rand, containments),
+      coolingType: pickFromList(rand, coolingProfiles),
+    };
+
+    const halls = Array.from({ length: hallsPerZone }, () => {
+      const rackCount = randomInt(rand, minRackCount, maxRackCount);
+      const rackDensityKW = randomInt(rand, 6, 55);
+      const hallId = `H-${String(hallIndex).padStart(2, "0")}`;
+      const hallName = `Hall ${hallIndex}`;
+
+      const hall = {
+        ...templateHall,
+        id: hallId,
+        hallIndex,
+        rackCount,
+        rackStartIndex: 0,
+        rackEndIndex: 0,
+        metadata: {
+          ...templateHall.metadata,
+          name: hallName,
+          notes: `${rackCount.toLocaleString()} modeled racks`,
+        },
+        profile: {
+          rackDensityKW,
+          redundancy: pickFromList(rand, redundancies),
+          containment: pickFromList(rand, containments),
+          coolingType: pickFromList(rand, coolingProfiles),
+        },
+        rackGroups: [
+          {
+            id: `${hallId}-G-01`,
+            name: "Default Group",
+            rackCount,
+          },
+        ],
+        racks: [],
+      };
+
+      hallIndex += 1;
+      return hall;
+    });
+
+    return {
+      ...templateZone,
+      id: `Z-${String(zoneIndex + 1).padStart(2, "0")}`,
+      zoneIndex: zoneIndex + 1,
+      metadata: {
+        ...templateZone.metadata,
+        name: `Zone ${String.fromCharCode(65 + zoneIndex)}`,
+      },
+      hallDefaults,
+      rackRules: {
+        minRackCount,
+        maxRackCount,
+        defaultRackCount,
+        step,
+      },
+      halls,
+    };
+  });
+
+  return {
+    ...base,
+    metadata: {
+      ...base.metadata,
+      name: "Stress Campus",
+      notes: "Large synthetic campus for stress validation.",
+    },
+    properties: {
+      targetPUE: 1.38,
+      whitespaceRatio: 0.41,
+    },
+    zones,
+  };
 }
 
 describe("applyRackProfilePatchByScope", () => {
@@ -290,5 +409,115 @@ describe("campus synthesis and validation", () => {
     expect(issueText).toContain("Hall 1");
     expect(issueText).toContain("density");
     expect(issueText).toContain("rack groups");
+  });
+});
+
+describe("campus stress and cache behavior", () => {
+  it("derives identical params from reconciled vs unreconciled campus inputs", () => {
+    const campus = createLargeCampus(23);
+    const reconciled = reconcileCampus(campus);
+
+    const fromReconciled = deriveParamsFromReconciledCampus(reconciled, DEFAULT_PARAMS);
+    const fromRaw = deriveParamsFromCampus(campus, DEFAULT_PARAMS);
+
+    expect(fromReconciled).toEqual(fromRaw);
+  });
+
+  it("keeps structural invariants under extreme hierarchy sizes", () => {
+    const campus = reconcileCampus(createLargeCampus());
+    const model = computeDataCenterFromCampus(campus, DEFAULT_PARAMS);
+
+    const halls = flattenHalls(campus).map((entry) => entry.hall);
+    expect(halls).toHaveLength(72);
+    expect(model.halls).toHaveLength(72);
+
+    let expectedStart = 1;
+    halls.forEach((hall) => {
+      expect(hall.rackCount).toBeGreaterThan(0);
+      expect(hall.rackStartIndex).toBe(expectedStart);
+      expect(hall.rackEndIndex).toBe(expectedStart + hall.rackCount - 1);
+      expect(hall.racks).toHaveLength(hall.rackCount);
+      if (hall.rackGroups.length > 0) {
+        expect(hall.rackGroups.reduce((sum, group) => sum + group.rackCount, 0)).toBe(hall.rackCount);
+      }
+      expectedStart = hall.rackEndIndex + 1;
+    });
+
+    expect(model.hallRackDistribution).toEqual(model.halls.map((hall) => hall.rackCount));
+    expect(model.rackCount).toBe(model.hallRackDistribution.reduce((sum, count) => sum + count, 0));
+    model.halls.forEach((hall) => {
+      expect(hall.rackCount).toBeLessThanOrEqual(hall.capacity);
+    });
+    expect(model.facilityLoad.totalFacilityMW).toBeGreaterThanOrEqual(model.facilityLoad.criticalITMW);
+    expect(model.facilityLoad.nonITOverheadMW).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns stable cached references for identical campus + fallback keys", () => {
+    const campus = reconcileCampus(createLargeCampus(99));
+
+    const first = computeDataCenterFromCampus(campus, DEFAULT_PARAMS);
+    const second = computeDataCenterFromCampus(campus, DEFAULT_PARAMS);
+    expect(second).toBe(first);
+
+    const withDifferentFallback = computeDataCenterFromCampus(
+      campus,
+      { ...DEFAULT_PARAMS, pue: DEFAULT_PARAMS.pue + 0.01 }
+    );
+    expect(withDifferentFallback).toEqual(first);
+  });
+
+  it("evicts oldest campus cache entries once per-campus cache limit is exceeded", () => {
+    const campus = reconcileCampus(createCampusFixture());
+    const fallbacks = Array.from({ length: 7 }, (_, index) => ({
+      ...DEFAULT_PARAMS,
+      pue: 1.1 + index * 0.01,
+    }));
+
+    const first = computeDataCenterFromCampus(campus, fallbacks[0]);
+    fallbacks.slice(1).forEach((fallback) => {
+      computeDataCenterFromCampus(campus, fallback);
+    });
+
+    const recomputed = computeDataCenterFromCampus(campus, fallbacks[0]);
+    expect(recomputed).not.toBe(first);
+    expect(recomputed).toEqual(first);
+  });
+
+  it("survives randomized patch/reconcile/model cycles without invariant breaks", () => {
+    const scopes: CampusParameterScope[] = [
+      { level: "campus" },
+      { level: "zone", zoneId: "Z-01" },
+      { level: "hall", zoneId: "Z-01", hallId: "H-01" },
+    ];
+    const profilePatches: RackProfilePatch[] = [
+      { rackDensityKW: 14 },
+      { redundancy: "2N" },
+      { coolingType: "Hybrid", containment: "Cold Aisle" },
+      { rackDensityKW: 999, redundancy: "N+1", containment: "Hot Aisle", coolingType: "DLC" },
+    ];
+
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const rand = createSeededRandom(seed);
+      let campus = createCampusFixture();
+
+      for (let step = 0; step < 12; step += 1) {
+        const scope = scopes[randomInt(rand, 0, scopes.length - 1)];
+        const patch = profilePatches[randomInt(rand, 0, profilePatches.length - 1)];
+        const withProfilePatch = applyRackProfilePatchByScope(campus, scope, patch);
+        const withCampusPatch = applyCampusPropertyPatch(withProfilePatch, {
+          targetPUE: 1.05 + randomInt(rand, 0, 95) / 100,
+          whitespaceRatio: 0.25 + randomInt(rand, 0, 40) / 100,
+        });
+        campus = reconcileCampus(withCampusPatch);
+
+        const issues = validateCampus(campus);
+        expect(issues).toHaveLength(0);
+
+        const model = computeDataCenterFromCampus(campus, DEFAULT_PARAMS);
+        expect(model.rackCount).toBe(model.halls.reduce((sum, hall) => sum + hall.rackCount, 0));
+        expect(model.rackCapacityBySpace).toBeGreaterThanOrEqual(model.rackCount);
+        expect(model.halls.length).toBeGreaterThan(0);
+      }
+    }
   });
 });

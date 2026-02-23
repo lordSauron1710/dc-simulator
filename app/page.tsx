@@ -8,7 +8,6 @@ import { PresetsPanel } from "@/ui/PresetsPanel";
 import { BottomControls } from "@/ui/BottomControls";
 import { ParamDrawer } from "@/ui/ParamDrawer";
 import {
-  buildShareUrl,
   detectPresetId,
   getPresetById,
   serializeStateToSearch,
@@ -17,6 +16,7 @@ import {
 } from "@/state";
 
 export default function SandboxPage() {
+  const currentVersion = "v0";
   const {
     state,
     select,
@@ -69,19 +69,6 @@ export default function SandboxPage() {
     },
     [select, setScrollFlowEnabled, setViewMode, updateParams]
   );
-
-  const handleCopyShareLink = useCallback(async (): Promise<boolean> => {
-    if (typeof window === "undefined" || !window.navigator?.clipboard?.writeText) {
-      return false;
-    }
-
-    try {
-      await window.navigator.clipboard.writeText(buildShareUrl(state));
-      return true;
-    } catch {
-      return false;
-    }
-  }, [state]);
 
   const handleToggleAllPanels = useCallback(() => {
     const nextMinimized = !allPanelsMinimized;
@@ -215,6 +202,14 @@ export default function SandboxPage() {
   return (
     <>
       <Viewport />
+      <div
+        className="under-construction-banner"
+        role="status"
+        aria-label="Under construction. v0 is live and v1 is in progress."
+      >
+        <span aria-hidden="true">👷</span>
+        <span>{`Under Construction: ${currentVersion}`}</span>
+      </div>
 
       <div className={uiLayerClassName}>
         <div className="ui-toolbar" role="toolbar" aria-label="Interface visibility controls">
@@ -387,7 +382,6 @@ export default function SandboxPage() {
             <PresetsPanel
               activePresetId={activePresetId}
               onApplyPreset={handleApplyPreset}
-              onCopyShareLink={handleCopyShareLink}
               forceMinimized={presetsForceMinimized}
               isMinimized={presetsMinimized}
               onMinimizedChange={setPresetsMinimized}

@@ -601,6 +601,28 @@ Add high-impact UX improvements and finish documentation:
 
 ---
 
+## Prompt 31 — Share and feedback pipeline
+
+**Prompt**  
+Implement a robust v1 sharing and feedback workflow:
+- Versioned, backward-compatible state serialization for share links
+- Campus-aware payload support (including hierarchical v1 entities)
+- Optional compact encoding/compression for long URLs
+- Share entry points with explicit copy/share actions and status feedback
+- Feedback submission flow that can include current state URL and app version context
+
+**Expected output**
+- `v1` share codec utilities with migration guards and validation
+- UI entry points for sharing and feedback aligned with existing shell patterns
+- Feedback payload contract (state link + metadata) documented for deployment targets
+
+**Acceptance criteria**
+- Shared links reliably restore the same v1 campus configuration and view state
+- Legacy v0 links still load without runtime errors
+- Feedback flow captures enough context to reproduce reported issues
+
+---
+
 ## Definition of Done (v1)
 
 - Full campus authoring with hierarchical explorer and builder UI

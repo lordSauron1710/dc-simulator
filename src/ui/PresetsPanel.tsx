@@ -6,7 +6,6 @@ import { DATA_CENTER_PRESETS, type PresetId } from "@/state/presets";
 export interface PresetsPanelProps {
   activePresetId: PresetId | null;
   onApplyPreset: (presetId: PresetId) => void;
-  onCopyShareLink: () => Promise<boolean>;
   forceMinimized?: boolean;
   isMinimized?: boolean;
   onMinimizedChange?: (minimized: boolean) => void;
@@ -16,14 +15,12 @@ export interface PresetsPanelProps {
 export function PresetsPanel({
   activePresetId,
   onApplyPreset,
-  onCopyShareLink,
   forceMinimized = false,
   isMinimized,
   onMinimizedChange,
   onExpandedHeightChange,
 }: PresetsPanelProps) {
   const [internalMinimized, setInternalMinimized] = useState(false);
-  const [shareStatus, setShareStatus] = useState<"idle" | "copied" | "error">("idle");
   const panelRef = useRef<HTMLElement | null>(null);
   const manualMinimized = isMinimized ?? internalMinimized;
   const effectiveMinimized = forceMinimized || manualMinimized;
@@ -37,12 +34,6 @@ export function PresetsPanel({
     },
     [isMinimized, onMinimizedChange]
   );
-
-  const handleCopyShare = useCallback(async () => {
-    const copied = await onCopyShareLink();
-    setShareStatus(copied ? "copied" : "error");
-    window.setTimeout(() => setShareStatus("idle"), 1500);
-  }, [onCopyShareLink]);
 
   useEffect(() => {
     if (!onExpandedHeightChange || effectiveMinimized || !panelRef.current) {
@@ -125,19 +116,6 @@ export function PresetsPanel({
               <span className="preset-chip-meta">{preset.description}</span>
             </button>
           ))}
-        </div>
-
-        <div className="preset-share-row">
-          <button type="button" className="preset-share-btn" onClick={handleCopyShare}>
-            Copy Share Link
-          </button>
-          <span className="preset-share-status">
-            {shareStatus === "copied"
-              ? "Link copied"
-              : shareStatus === "error"
-                ? "Copy failed"
-                : " "}
-          </span>
         </div>
       </div>
     </aside>

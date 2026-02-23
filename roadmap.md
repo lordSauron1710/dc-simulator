@@ -298,6 +298,7 @@ Introduce a typed hierarchical data model for the whole site:
 ### Feature Cluster — Campus Building Core
 
 ## Prompt 17 — Campus builder panel (structured authoring UX)
+<!-- EXECUTED -->
 
 **Prompt**  
 Add a comprehensive campus builder panel:

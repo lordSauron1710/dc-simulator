@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Viewport } from "@/scene/Viewport";
-import { ExplorerTree } from "@/ui/ExplorerTree";
 import { SpecsPanel } from "@/ui/SpecsPanel";
 import { PresetsPanel } from "@/ui/PresetsPanel";
 import { BottomControls } from "@/ui/BottomControls";
-import { ParamDrawer } from "@/ui/ParamDrawer";
+import { CampusBuilderPanel } from "@/ui/CampusBuilderPanel";
+import { CampusParametersPanel, type ParameterFocusRequest } from "@/ui/CampusParametersPanel";
 import {
   detectPresetId,
   getPresetById,
@@ -14,6 +14,8 @@ import {
   type PresetId,
   useStore,
 } from "@/state";
+
+type AuthoringTab = "builder" | "parameters";
 
 export default function SandboxPage() {
   const currentVersion = "v0";
@@ -25,25 +27,29 @@ export default function SandboxPage() {
     setScrollFlowEnabled,
     resetCamera,
     updateParams,
-    toggleDrawer,
+    updateCampusAndParams,
   } = useStore();
   const rightTopRef = useRef<HTMLDivElement | null>(null);
   const inspectorHostRef = useRef<HTMLDivElement | null>(null);
   const [presetsForceMinimized, setPresetsForceMinimized] = useState(false);
   const [presetsExpandedHeight, setPresetsExpandedHeight] = useState(280);
   const [inspectorMaxHeight, setInspectorMaxHeight] = useState<number | null>(null);
-  const [explorerMinimized, setExplorerMinimized] = useState(false);
-  const [paramsMinimized, setParamsMinimized] = useState(false);
+  const [authoringMinimized, setAuthoringMinimized] = useState(false);
+  const [authoringTab, setAuthoringTab] = useState<AuthoringTab>("builder");
+  const [parameterFocusRequest, setParameterFocusRequest] = useState<ParameterFocusRequest>({
+    zoneId: null,
+    hallId: null,
+    nonce: 0,
+  });
   const [inspectorMinimized, setInspectorMinimized] = useState(false);
   const [presetsMinimized, setPresetsMinimized] = useState(false);
   const [controlsMinimized, setControlsMinimized] = useState(false);
 
   const activePresetId = useMemo(() => detectPresetId(state.params), [state.params]);
-  const leftRailMinimized = explorerMinimized && paramsMinimized;
+  const leftRailMinimized = authoringMinimized;
   const rightRailMinimized = inspectorMinimized && presetsMinimized && controlsMinimized;
   const allPanelsMinimized =
-    explorerMinimized &&
-    paramsMinimized &&
+    authoringMinimized &&
     inspectorMinimized &&
     presetsMinimized &&
     controlsMinimized;
@@ -72,8 +78,7 @@ export default function SandboxPage() {
 
   const handleToggleAllPanels = useCallback(() => {
     const nextMinimized = !allPanelsMinimized;
-    setExplorerMinimized(nextMinimized);
-    setParamsMinimized(nextMinimized);
+    setAuthoringMinimized(nextMinimized);
     setInspectorMinimized(nextMinimized);
     setPresetsMinimized(nextMinimized);
     setControlsMinimized(nextMinimized);
@@ -114,8 +119,7 @@ export default function SandboxPage() {
     }
 
     if (window.matchMedia("(max-width: 900px)").matches) {
-      setExplorerMinimized(true);
-      setParamsMinimized(true);
+      setAuthoringMinimized(true);
       setInspectorMinimized(true);
       setPresetsMinimized(true);
     }
@@ -215,19 +219,25 @@ export default function SandboxPage() {
         <div className="ui-toolbar" role="toolbar" aria-label="Interface visibility controls">
           <button
             type="button"
-            className={`ui-toolbar-btn ${explorerMinimized ? "" : "active"}`}
-            onClick={() => setExplorerMinimized((current) => !current)}
-            aria-pressed={!explorerMinimized}
+            className={`ui-toolbar-btn ${!authoringMinimized && authoringTab === "builder" ? "active" : ""}`}
+            onClick={() => {
+              setAuthoringTab("builder");
+              setAuthoringMinimized(false);
+            }}
+            aria-pressed={!authoringMinimized && authoringTab === "builder"}
           >
-            Explorer
+            Builder
           </button>
           <button
             type="button"
-            className={`ui-toolbar-btn ${paramsMinimized ? "" : "active"}`}
-            onClick={() => setParamsMinimized((current) => !current)}
-            aria-pressed={!paramsMinimized}
+            className={`ui-toolbar-btn ${!authoringMinimized && authoringTab === "parameters" ? "active" : ""}`}
+            onClick={() => {
+              setAuthoringTab("parameters");
+              setAuthoringMinimized(false);
+            }}
+            aria-pressed={!authoringMinimized && authoringTab === "parameters"}
           >
-            Params
+            Parameters
           </button>
           <button
             type="button"
@@ -264,14 +274,14 @@ export default function SandboxPage() {
 
         <div className="panel-left-shell">
           <div className="panel-left-stack">
-            {explorerMinimized ? (
-              <aside className="panel-specs panel-left-card panel-specs-minimal" aria-label="Explorer minimized">
+            {authoringMinimized ? (
+              <aside className="panel-specs panel-left-card panel-specs-minimal" aria-label="Authoring workspace minimized">
                 <button
                   type="button"
                   className="panel-minimal-toggle"
-                  onClick={() => setExplorerMinimized(false)}
-                  aria-label="Expand explorer"
-                  title="Expand explorer"
+                  onClick={() => setAuthoringMinimized(false)}
+                  aria-label="Expand authoring workspace"
+                  title="Expand authoring workspace"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                     <rect x="4" y="5" width="16" height="14" rx="1.5" />
@@ -280,17 +290,17 @@ export default function SandboxPage() {
                 </button>
               </aside>
             ) : (
-              <aside className="panel-specs panel-left-card" aria-label="Explorer">
+              <aside className="panel-specs panel-left-card" aria-label="Authoring workspace">
                 <div className="panel-section">
                   <div className="panel-title panel-title-with-controls">
-                    <span>Explorer</span>
+                    <span>Authoring Workspace</span>
                     <div className="inspector-actions">
                       <button
                         type="button"
                         className="inspector-action-btn"
-                        onClick={() => setExplorerMinimized(true)}
-                        aria-label="Minimize explorer"
-                        title="Minimize explorer"
+                        onClick={() => setAuthoringMinimized(true)}
+                        aria-label="Minimize authoring workspace"
+                        title="Minimize authoring workspace"
                       >
                         <svg viewBox="0 0 24 24" aria-hidden="true">
                           <path d="M5 11h14v2H5z" />
@@ -298,66 +308,47 @@ export default function SandboxPage() {
                       </button>
                     </div>
                   </div>
-                  <div className="panel-left-card-body panel-left-card-body-explorer">
-                    <ExplorerTree
-                      selection={state.selection}
-                      onSelect={(id, type) => select({ id, type })}
-                      showHeader={false}
-                    />
+                  <div className="authoring-tabs" role="tablist" aria-label="Authoring sections">
+                    <button
+                      type="button"
+                      className={`authoring-tab ${authoringTab === "builder" ? "active" : ""}`}
+                      onClick={() => setAuthoringTab("builder")}
+                      aria-selected={authoringTab === "builder"}
+                    >
+                      Campus Builder
+                    </button>
+                    <button
+                      type="button"
+                      className={`authoring-tab ${authoringTab === "parameters" ? "active" : ""}`}
+                      onClick={() => setAuthoringTab("parameters")}
+                      aria-selected={authoringTab === "parameters"}
+                    >
+                      Rack Parameters
+                    </button>
                   </div>
-                </div>
-              </aside>
-            )}
-
-            {paramsMinimized ? (
-              <aside className="panel-specs panel-left-card panel-specs-minimal" aria-label="Parameters minimized">
-                <button
-                  type="button"
-                  className="panel-minimal-toggle"
-                  onClick={() => setParamsMinimized(false)}
-                  aria-label="Expand parameters"
-                  title="Expand parameters"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                    <circle cx="12" cy="12" r="3.2" />
-                    <path d="M12 4.5v2.1" />
-                    <path d="M12 17.4v2.1" />
-                    <path d="M4.5 12h2.1" />
-                    <path d="M17.4 12h2.1" />
-                    <path d="M6.7 6.7 8.2 8.2" />
-                    <path d="M15.8 15.8 17.3 17.3" />
-                    <path d="M6.7 17.3 8.2 15.8" />
-                    <path d="M15.8 8.2 17.3 6.7" />
-                  </svg>
-                </button>
-              </aside>
-            ) : (
-              <aside className="panel-specs panel-left-card" aria-label="Parameters">
-                <div className="panel-section">
-                  <div className="panel-title panel-title-with-controls">
-                    <span>Parameters</span>
-                    <div className="inspector-actions">
-                      <button
-                        type="button"
-                        className="inspector-action-btn"
-                        onClick={() => setParamsMinimized(true)}
-                        aria-label="Minimize parameters"
-                        title="Minimize parameters"
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M5 11h14v2H5z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="panel-left-card-body panel-left-card-body-params">
-                    <ParamDrawer
-                      params={state.params}
-                      isOpen={state.ui.drawerOpen}
-                      onToggle={toggleDrawer}
-                      onParamsChange={updateParams}
-                      showHeader={false}
-                    />
+                  <div className="panel-left-card-body panel-left-card-body-builder">
+                    {authoringTab === "builder" ? (
+                      <CampusBuilderPanel
+                        campus={state.campus}
+                        params={state.params}
+                        onCampusChange={updateCampusAndParams}
+                        onOpenHallParameters={(zoneId, hallId) => {
+                          setAuthoringTab("parameters");
+                          setParameterFocusRequest({
+                            zoneId,
+                            hallId,
+                            nonce: Date.now(),
+                          });
+                        }}
+                      />
+                    ) : (
+                      <CampusParametersPanel
+                        campus={state.campus}
+                        params={state.params}
+                        onCampusChange={updateCampusAndParams}
+                        focusRequest={parameterFocusRequest}
+                      />
+                    )}
                   </div>
                 </div>
               </aside>

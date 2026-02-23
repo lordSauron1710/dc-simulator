@@ -2,12 +2,14 @@
  * Store actions for DC Simulator (Prompt 03).
  */
 
-import type { Campus, Params, Selection, ViewMode, UIState } from "./types";
+import type { AppState, Campus, Params, Selection, ViewMode, UIState } from "./types";
 
 export type StoreAction =
   | { type: "SET_PARAMS"; payload: Params }
   | { type: "PATCH_PARAMS"; payload: Partial<Params> }
+  | { type: "HYDRATE_FROM_URL"; payload: Partial<AppState> }
   | { type: "SET_CAMPUS"; payload: Campus }
+  | { type: "SET_CAMPUS_AND_PARAMS"; payload: { campus: Campus; params: Params } }
   | { type: "SET_SELECTION"; payload: Selection }
   | { type: "SET_VIEW_MODE"; payload: ViewMode }
   | { type: "SET_SCROLL_FLOW_ENABLED"; payload: boolean }
@@ -24,8 +26,16 @@ export function patchParams(payload: Partial<Params>): StoreAction {
   return { type: "PATCH_PARAMS", payload };
 }
 
+export function hydrateFromUrl(payload: Partial<AppState>): StoreAction {
+  return { type: "HYDRATE_FROM_URL", payload };
+}
+
 export function setCampus(campus: Campus): StoreAction {
   return { type: "SET_CAMPUS", payload: campus };
+}
+
+export function setCampusAndParams(campus: Campus, params: Params): StoreAction {
+  return { type: "SET_CAMPUS_AND_PARAMS", payload: { campus, params } };
 }
 
 export function setSelection(selection: Selection): StoreAction {

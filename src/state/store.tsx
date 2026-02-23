@@ -1,11 +1,13 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useMemo, useReducer } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AppState, Campus, Params, Selection, ViewMode } from "./types";
 import type { StoreAction } from "./actions";
 import {
+  hydrateFromUrl,
   patchParams,
   setCampus,
+  setCampusAndParams,
   setSelection,
   setCutawayEnabled,
   setScrollFlowEnabled,
@@ -15,6 +17,7 @@ import {
   toggleDrawer,
 } from "./actions";
 import { storeReducer, getInitialState } from "./reducer";
+import { parseStateFromSearch } from "./urlState";
 
 interface StoreContextValue {
   state: AppState;
@@ -22,6 +25,7 @@ interface StoreContextValue {
   // Convenience actions so consumers don't need action creators
   updateParams: (patch: Partial<Params>) => void;
   updateCampus: (campus: Campus) => void;
+  updateCampusAndParams: (campus: Campus, params: Params) => void;
   select: (selection: Selection) => void;
   setViewMode: (mode: ViewMode) => void;
   setCutawayEnabled: (enabled: boolean) => void;
@@ -35,6 +39,21 @@ const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(storeReducer, undefined, getInitialState);
+  const didHydrateFromUrlRef = useRef(false);
+
+  useEffect(() => {
+    if (didHydrateFromUrlRef.current) {
+      return;
+    }
+    didHydrateFromUrlRef.current = true;
+
+    const parsed = parseStateFromSearch(window.location.search);
+    if (!parsed) {
+      return;
+    }
+
+    dispatch(hydrateFromUrl(parsed));
+  }, []);
 
   const updateParams = useCallback((patch: Partial<Params>) => {
     dispatch(patchParams(patch));
@@ -42,6 +61,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const updateCampus = useCallback((campus: Campus) => {
     dispatch(setCampus(campus));
+  }, []);
+
+  const updateCampusAndParams = useCallback((campus: Campus, params: Params) => {
+    dispatch(setCampusAndParams(campus, params));
   }, []);
 
   const select = useCallback((selection: Selection) => {
@@ -78,6 +101,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       dispatch,
       updateParams,
       updateCampus,
+      updateCampusAndParams,
       select,
       setViewMode: setViewModeAction,
       setCutawayEnabled: setCutawayEnabledAction,
@@ -90,6 +114,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       state,
       updateParams,
       updateCampus,
+      updateCampusAndParams,
       select,
       setViewModeAction,
       setCutawayEnabledAction,

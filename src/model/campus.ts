@@ -8,10 +8,46 @@ export interface EntityMetadata {
   tags?: string[];
 }
 
+export type RedundancyProfile = "N" | "N+1" | "2N";
+export type CoolingProfile = "Air-Cooled" | "DLC" | "Hybrid";
+export type ContainmentProfile = "None" | "Hot Aisle" | "Cold Aisle" | "Full Enclosure";
+
+export interface CampusProperties {
+  targetPUE: number;
+  whitespaceRatio: number;
+}
+
+export interface ZoneHallDefaults {
+  rackDensityKW: number;
+  redundancy: RedundancyProfile;
+  containment: ContainmentProfile;
+  coolingType: CoolingProfile;
+}
+
+export interface ZoneRackRules {
+  minRackCount: number;
+  maxRackCount: number;
+  defaultRackCount: number;
+  step: number;
+}
+
+export interface RackGroup {
+  id: string;
+  name: string;
+  rackCount: number;
+}
+
 export interface Rack {
   id: string;
   rackIndex: number;
   metadata: EntityMetadata;
+}
+
+export interface HallProfile {
+  rackDensityKW: number;
+  redundancy: RedundancyProfile;
+  containment: ContainmentProfile;
+  coolingType: CoolingProfile;
 }
 
 export interface Hall {
@@ -20,6 +56,8 @@ export interface Hall {
   rackCount: number;
   rackStartIndex: number;
   rackEndIndex: number;
+  profile: HallProfile;
+  rackGroups: RackGroup[];
   metadata: EntityMetadata;
   racks: Rack[];
 }
@@ -27,6 +65,8 @@ export interface Hall {
 export interface Zone {
   id: string;
   zoneIndex: number;
+  hallDefaults: ZoneHallDefaults;
+  rackRules: ZoneRackRules;
   metadata: EntityMetadata;
   halls: Hall[];
 }
@@ -34,6 +74,7 @@ export interface Zone {
 export interface Campus {
   id: string;
   version: 1;
+  properties: CampusProperties;
   metadata: EntityMetadata;
   zones: Zone[];
 }
@@ -54,12 +95,16 @@ export function formatRackId(index: number): string {
   return `R-${String(index).padStart(4, "0")}`;
 }
 
+export function formatRackGroupId(hallId: string, index: number): string {
+  return `${hallId}-G-${String(index).padStart(2, "0")}`;
+}
+
 function roundTo(value: number, decimals = 2): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
 }
 
-function buildRackRange(startIndex: number, endIndex: number, targetDensityKW: number): Rack[] {
+export function buildRackRange(startIndex: number, endIndex: number, targetDensityKW: number): Rack[] {
   if (startIndex <= 0 || endIndex <= 0 || endIndex < startIndex) {
     return [];
   }
@@ -90,12 +135,26 @@ export function buildDefaultCampusFromParams(params: Params): Campus {
 
   const halls: Hall[] = model.halls.map((hall) => {
     const hallId = formatHallId(hall.hallIndex);
+    const rackGroupId = formatRackGroupId(hallId, 1);
     return {
       id: hallId,
       hallIndex: hall.hallIndex,
       rackCount: hall.rackCount,
       rackStartIndex: hall.rackStartIndex,
       rackEndIndex: hall.rackEndIndex,
+      profile: {
+        rackDensityKW: roundTo(params.rackPowerDensity, 2),
+        redundancy: params.redundancy,
+        containment: params.containment,
+        coolingType: params.coolingType,
+      },
+      rackGroups: [
+        {
+          id: rackGroupId,
+          name: "Default Group",
+          rackCount: hall.rackCount,
+        },
+      ],
       metadata: {
         name: `Hall ${hall.hallIndex}`,
         notes: `${hall.rackCount.toLocaleString()} modeled racks`,
@@ -109,6 +168,10 @@ export function buildDefaultCampusFromParams(params: Params): Campus {
   return {
     id: campusId,
     version: 1,
+    properties: {
+      targetPUE: roundTo(params.pue, 2),
+      whitespaceRatio: roundTo(params.whitespaceRatio, 2),
+    },
     metadata: {
       name: "Campus C-01",
       notes: "Generated from v0 parameter baseline.",
@@ -119,6 +182,18 @@ export function buildDefaultCampusFromParams(params: Params): Campus {
       {
         id: zoneId,
         zoneIndex: 1,
+        hallDefaults: {
+          rackDensityKW: roundTo(params.rackPowerDensity, 2),
+          redundancy: params.redundancy,
+          containment: params.containment,
+          coolingType: params.coolingType,
+        },
+        rackRules: {
+          minRackCount: 4,
+          maxRackCount: 450,
+          defaultRackCount: 120,
+          step: 2,
+        },
         metadata: {
           name: "Zone A",
           notes: "Default zone migrated from v0 state.",

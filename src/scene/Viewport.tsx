@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { computeDataCenter, type DataCenterModel } from "@/model";
+import { computeDataCenterFromCampus, type DataCenterModel } from "@/model";
 import { useStore } from "@/state";
 import type { Params } from "@/state/types";
 
@@ -859,8 +859,8 @@ function deriveSceneScale(params: Params, model: DataCenterModel): SceneScale {
 
 export function Viewport() {
   const { state, select } = useStore();
-  const { params } = state;
-  const model = useMemo(() => computeDataCenter(params), [params]);
+  const { params, campus } = state;
+  const model = useMemo(() => computeDataCenterFromCampus(campus, params), [campus, params]);
 
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);

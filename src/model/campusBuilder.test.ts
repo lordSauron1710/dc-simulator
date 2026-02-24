@@ -4,6 +4,7 @@ import {
   applyRackProfilePatchByScope,
   buildDefaultCampusFromParams,
   CAMPUS_PARAM_LIMITS,
+  computeCampusModel,
   computeDataCenterFromCampus,
   deriveParamsFromCampus,
   deriveParamsFromReconciledCampus,
@@ -385,6 +386,72 @@ describe("campus synthesis and validation", () => {
     expect(model.facilityLoad.nonITOverheadMW).toBe(1.87);
   });
 
+  it("builds zone and campus summary layers with no aggregate drift", () => {
+    const campus = createCampusFixture();
+    const model = computeCampusModel(campus, DEFAULT_PARAMS);
+
+    expect(model.runtime.dataCenter).toEqual(computeDataCenterFromCampus(campus, DEFAULT_PARAMS));
+    expect(model.campus.zoneCount).toBe(model.zones.length);
+    expect(model.campus.hallCount).toBe(model.halls.length);
+    expect(model.campus.rackCount).toBe(model.zones.reduce((sum, zone) => sum + zone.rackCount, 0));
+    expect(model.campus.rackCapacityBySpace).toBe(
+      model.zones.reduce((sum, zone) => sum + zone.rackCapacityBySpace, 0)
+    );
+    expect(model.campus.area.whitespaceSqFt).toBe(
+      Number(model.zones.reduce((sum, zone) => sum + zone.area.whitespaceSqFt, 0).toFixed(2))
+    );
+    expect(model.campus.area.grossFacilitySqFt).toBe(
+      Number(model.zones.reduce((sum, zone) => sum + zone.area.grossSqFt, 0).toFixed(2))
+    );
+    expect(model.campus.facilityLoad.criticalITMW).toBe(
+      Number(model.zones.reduce((sum, zone) => sum + zone.facilityLoad.criticalITMW, 0).toFixed(2))
+    );
+    expect(model.campus.facilityLoad.totalFacilityMW).toBe(
+      Number(model.zones.reduce((sum, zone) => sum + zone.facilityLoad.totalFacilityMW, 0).toFixed(2))
+    );
+    expect(model.campus.facilityLoad.nonITOverheadMW).toBe(
+      Number(model.zones.reduce((sum, zone) => sum + zone.facilityLoad.nonITOverheadMW, 0).toFixed(2))
+    );
+
+    model.zones.forEach((zone) => {
+      expect(zone.rackCount).toBe(zone.halls.reduce((sum, hall) => sum + hall.rackCount, 0));
+      expect(zone.rackCapacityBySpace).toBe(
+        zone.halls.reduce((sum, hall) => sum + hall.rackCapacityBySpace, 0)
+      );
+      expect(zone.area.whitespaceSqFt).toBe(
+        Number(zone.halls.reduce((sum, hall) => sum + hall.area.whitespaceSqFt, 0).toFixed(2))
+      );
+      expect(zone.area.grossSqFt).toBe(
+        Number(zone.halls.reduce((sum, hall) => sum + hall.area.grossSqFt, 0).toFixed(2))
+      );
+      expect(zone.facilityLoad.criticalITMW).toBe(
+        Number(zone.halls.reduce((sum, hall) => sum + hall.facilityLoad.criticalITMW, 0).toFixed(2))
+      );
+      expect(zone.facilityLoad.totalFacilityMW).toBe(
+        Number(zone.halls.reduce((sum, hall) => sum + hall.facilityLoad.totalFacilityMW, 0).toFixed(2))
+      );
+      expect(zone.facilityLoad.nonITOverheadMW).toBe(
+        Number(zone.halls.reduce((sum, hall) => sum + hall.facilityLoad.nonITOverheadMW, 0).toFixed(2))
+      );
+    });
+
+    expect(model.explorer.zones.map((zone) => zone.id)).toEqual(["Z-01", "Z-02"]);
+    expect(model.runtime.zoneOrder).toEqual(["Z-01", "Z-02"]);
+    expect(model.runtime.hallOrder).toEqual(["H-01", "H-02", "H-03", "H-04"]);
+    expect(model.runtime.hallToZone).toEqual({
+      "H-01": "Z-01",
+      "H-02": "Z-01",
+      "H-03": "Z-02",
+      "H-04": "Z-02",
+    });
+
+    expect(model.specs.zonesById["Z-01"].rackCount).toBe(176);
+    expect(model.specs.zonesById["Z-02"].rackCount).toBe(160);
+    expect(model.specs.hallsById["H-03"].zoneId).toBe("Z-02");
+    expect(model.specs.hallsById["H-03"].rackStartIndex).toBe(177);
+    expect(model.specs.hallsById["H-03"].rackEndIndex).toBe(246);
+  });
+
   it("reports actionable validation issues for invalid campus states", () => {
     const invalid = cloneCampus(createCampusFixture());
     invalid.metadata.name = "";
@@ -460,6 +527,21 @@ describe("campus stress and cache behavior", () => {
     expect(second).toBe(first);
 
     const withDifferentFallback = computeDataCenterFromCampus(
+      campus,
+      { ...DEFAULT_PARAMS, pue: DEFAULT_PARAMS.pue + 0.01 }
+    );
+    expect(withDifferentFallback).toEqual(first);
+  });
+
+  it("returns stable campus synthesis references for identical campus + fallback keys", () => {
+    const campus = reconcileCampus(createLargeCampus(12));
+
+    const first = computeCampusModel(campus, DEFAULT_PARAMS);
+    const second = computeCampusModel(campus, DEFAULT_PARAMS);
+    expect(second).toBe(first);
+    expect(second.runtime.dataCenter).toBe(first.runtime.dataCenter);
+
+    const withDifferentFallback = computeCampusModel(
       campus,
       { ...DEFAULT_PARAMS, pue: DEFAULT_PARAMS.pue + 0.01 }
     );

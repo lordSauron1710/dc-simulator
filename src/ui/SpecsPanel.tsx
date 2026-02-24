@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { computeDataCenterFromCampus, type HallDescription } from "@/model";
+import { computeCampusModel, type HallAggregateSummary } from "@/model";
 import { useStore, type SelectionType } from "@/state";
 
 type InspectorView = "full" | "key";
@@ -12,7 +12,7 @@ interface SelectionContext {
   selectionName: string;
   caption: string;
   assignedHallLabel: string;
-  hall: HallDescription | null;
+  hall: HallAggregateSummary | null;
   rackIndex: number | null;
   rackOrdinalInHall: number | null;
 }
@@ -48,9 +48,14 @@ function parseTrailingNumber(value: string): number | null {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
-function findHallBySelection(selectionId: string, selectionType: SelectionType, halls: HallDescription[]) {
+function findHallBySelection(
+  selectionId: string,
+  selectionType: SelectionType,
+  halls: HallAggregateSummary[],
+  hallsById: Record<string, HallAggregateSummary>
+) {
   if (selectionType === "hall") {
-    const byId = halls.find((hall) => hall.id === selectionId);
+    const byId = hallsById[selectionId];
     if (byId) {
       return byId;
     }
@@ -81,13 +86,14 @@ function findHallBySelection(selectionId: string, selectionType: SelectionType, 
 function resolveSelectionContext(
   selectionId: string,
   selectionType: SelectionType,
-  halls: HallDescription[],
+  halls: HallAggregateSummary[],
+  hallsById: Record<string, HallAggregateSummary>,
   totalRacks: number,
   rackCapacityBySpace: number,
   totalFacilityMW: number,
   nonITOverheadMW: number
 ): SelectionContext {
-  const resolvedHall = findHallBySelection(selectionId, selectionType, halls);
+  const resolvedHall = findHallBySelection(selectionId, selectionType, halls, hallsById);
   const rackIndex = selectionType === "rack" ? parseTrailingNumber(selectionId) : null;
 
   if (selectionType === "building") {
@@ -273,7 +279,7 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
   const { params, campus, selection } = state;
   const [view, setView] = useState<InspectorView>("key");
   const [internalMinimized, setInternalMinimized] = useState(false);
-  const model = useMemo(() => computeDataCenterFromCampus(campus, params), [campus, params]);
+  const campusModel = useMemo(() => computeCampusModel(campus, params), [campus, params]);
   const minimized = isMinimized ?? internalMinimized;
 
   const setMinimized = useCallback(
@@ -286,33 +292,35 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
     [isMinimized, onMinimizedChange]
   );
 
-  const totalRacks = model.rackCount;
+  const totalRacks = campusModel.campus.rackCount;
   const racksPerHall =
-    model.hallRackDistribution.length > 0
-      ? Math.round(model.rackCount / model.hallRackDistribution.length)
+    campusModel.campus.hallCount > 0
+      ? Math.round(campusModel.campus.rackCount / campusModel.campus.hallCount)
       : 0;
-  const totalFacilityMW = model.facilityLoad.totalFacilityMW;
-  const overheadMW = model.facilityLoad.nonITOverheadMW;
+  const totalFacilityMW = campusModel.campus.facilityLoad.totalFacilityMW;
+  const overheadMW = campusModel.campus.facilityLoad.nonITOverheadMW;
 
   const selectionContext = useMemo(
     () =>
       resolveSelectionContext(
         selection.id,
         selection.type,
-        model.halls,
-        model.rackCount,
-        model.rackCapacityBySpace,
-        model.facilityLoad.totalFacilityMW,
-        model.facilityLoad.nonITOverheadMW
+        campusModel.halls,
+        campusModel.specs.hallsById,
+        campusModel.campus.rackCount,
+        campusModel.campus.rackCapacityBySpace,
+        campusModel.campus.facilityLoad.totalFacilityMW,
+        campusModel.campus.facilityLoad.nonITOverheadMW
       ),
     [
       selection.id,
       selection.type,
-      model.halls,
-      model.rackCount,
-      model.rackCapacityBySpace,
-      model.facilityLoad.totalFacilityMW,
-      model.facilityLoad.nonITOverheadMW,
+      campusModel.halls,
+      campusModel.specs.hallsById,
+      campusModel.campus.rackCount,
+      campusModel.campus.rackCapacityBySpace,
+      campusModel.campus.facilityLoad.totalFacilityMW,
+      campusModel.campus.facilityLoad.nonITOverheadMW,
     ]
   );
 
@@ -320,21 +328,21 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
     () =>
       buildProfileRows(
         selectionContext,
-        model.halls.length,
-        model.rackCount,
-        model.rackCapacityBySpace,
-        model.rackCountFromPower,
-        model.facilityLoad.totalFacilityMW,
-        model.facilityLoad.nonITOverheadMW
+        campusModel.campus.hallCount,
+        campusModel.campus.rackCount,
+        campusModel.campus.rackCapacityBySpace,
+        campusModel.campus.rackCountFromPower,
+        campusModel.campus.facilityLoad.totalFacilityMW,
+        campusModel.campus.facilityLoad.nonITOverheadMW
       ),
     [
       selectionContext,
-      model.halls.length,
-      model.rackCount,
-      model.rackCapacityBySpace,
-      model.rackCountFromPower,
-      model.facilityLoad.totalFacilityMW,
-      model.facilityLoad.nonITOverheadMW,
+      campusModel.campus.hallCount,
+      campusModel.campus.rackCount,
+      campusModel.campus.rackCapacityBySpace,
+      campusModel.campus.rackCountFromPower,
+      campusModel.campus.facilityLoad.totalFacilityMW,
+      campusModel.campus.facilityLoad.nonITOverheadMW,
     ]
   );
 

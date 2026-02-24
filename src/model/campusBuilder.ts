@@ -1,4 +1,10 @@
-import { computeDataCenter, type DataCenterModel, type HallRow } from "./dataCenter";
+import {
+  computeDataCenter,
+  type AreaSummary,
+  type DataCenterModel,
+  type FacilityLoadSummary,
+  type HallRow,
+} from "./dataCenter";
 import {
   buildRackRange,
   formatHallId,
@@ -30,7 +36,11 @@ export const CAMPUS_PARAM_LIMITS = {
 
 const DEFAULT_RACKS_PER_ROW = 18;
 const CAMPUS_MODEL_CACHE_PER_CAMPUS_LIMIT = 6;
-const campusModelCache = new WeakMap<Campus, Map<string, DataCenterModel>>();
+const campusModelCache = new WeakMap<Campus, Map<string, CampusModel>>();
+
+const REDUNDANCY_ORDER: readonly RedundancyProfile[] = ["N", "N+1", "2N"];
+const COOLING_ORDER: readonly CoolingProfile[] = ["Air-Cooled", "DLC", "Hybrid"];
+const CONTAINMENT_ORDER: readonly ContainmentProfile[] = ["None", "Hot Aisle", "Cold Aisle", "Full Enclosure"];
 
 export type ParameterScopeLevel = "campus" | "zone" | "hall";
 
@@ -50,6 +60,156 @@ export interface RackProfilePatch {
 export interface CampusPropertyPatch {
   targetPUE?: number;
   whitespaceRatio?: number;
+}
+
+export interface ProfileMixEntry<T extends string> {
+  profile: T;
+  hallCount: number;
+  rackCount: number;
+}
+
+export interface ProfileMixSummary<T extends string> {
+  dominantProfile: T;
+  entries: ProfileMixEntry<T>[];
+}
+
+export interface HallAggregateSummary {
+  id: string;
+  hallIndex: number;
+  zoneId: string;
+  zoneIndex: number;
+  name: string;
+  rackCount: number;
+  capacity: number;
+  rackCapacityBySpace: number;
+  rackDensityKW: number;
+  utilization: number;
+  rackStartIndex: number;
+  rackEndIndex: number;
+  facilityLoad: FacilityLoadSummary;
+  area: {
+    whitespaceSqFt: number;
+    grossSqFt: number;
+  };
+  profiles: {
+    redundancy: RedundancyProfile;
+    coolingType: CoolingProfile;
+    containment: ContainmentProfile;
+  };
+  dimensionsFt: {
+    width: number;
+    length: number;
+  };
+  packing: {
+    rowCount: number;
+    maxRows: number;
+    targetRacksPerRow: number;
+    maxRacksPerRow: number;
+  };
+  rows: HallRow[];
+  geometry: {
+    dimensionsFt: {
+      width: number;
+      length: number;
+    };
+    packing: {
+      rowCount: number;
+      maxRows: number;
+      targetRacksPerRow: number;
+      maxRacksPerRow: number;
+    };
+    rows: HallRow[];
+  };
+}
+
+export interface ZoneAggregateSummary {
+  id: string;
+  zoneIndex: number;
+  name: string;
+  hallCount: number;
+  rackCount: number;
+  rackCapacityBySpace: number;
+  utilization: number;
+  rackCountFromPower: number;
+  facilityLoad: FacilityLoadSummary;
+  area: {
+    whitespaceSqFt: number;
+    grossSqFt: number;
+  };
+  profiles: {
+    redundancy: ProfileMixSummary<RedundancyProfile>;
+    coolingType: ProfileMixSummary<CoolingProfile>;
+    containment: ProfileMixSummary<ContainmentProfile>;
+  };
+  halls: HallAggregateSummary[];
+}
+
+export interface CampusAggregateSummary {
+  id: string;
+  name: string;
+  zoneCount: number;
+  hallCount: number;
+  rackCount: number;
+  rackCapacityBySpace: number;
+  utilization: number;
+  rackCountFromPower: number;
+  facilityLoad: FacilityLoadSummary;
+  area: AreaSummary;
+  profiles: {
+    redundancy: ProfileMixSummary<RedundancyProfile>;
+    coolingType: ProfileMixSummary<CoolingProfile>;
+    containment: ProfileMixSummary<ContainmentProfile>;
+  };
+}
+
+export interface ExplorerHallSummary {
+  id: string;
+  name: string;
+  hallIndex: number;
+  rackCount: number;
+  rackCapacityBySpace: number;
+  utilization: number;
+}
+
+export interface ExplorerZoneSummary {
+  id: string;
+  name: string;
+  zoneIndex: number;
+  hallCount: number;
+  rackCount: number;
+  halls: ExplorerHallSummary[];
+}
+
+export interface CampusExplorerSummary {
+  campusId: string;
+  campusName: string;
+  zoneCount: number;
+  hallCount: number;
+  rackCount: number;
+  zones: ExplorerZoneSummary[];
+}
+
+export interface CampusSpecsSummary {
+  campus: CampusAggregateSummary;
+  zonesById: Record<string, ZoneAggregateSummary>;
+  hallsById: Record<string, HallAggregateSummary>;
+}
+
+export interface CampusRuntimeSummary {
+  dataCenter: DataCenterModel;
+  zoneOrder: string[];
+  hallOrder: string[];
+  hallToZone: Record<string, string>;
+}
+
+export interface CampusModel {
+  params: Params;
+  campus: CampusAggregateSummary;
+  zones: ZoneAggregateSummary[];
+  halls: HallAggregateSummary[];
+  explorer: CampusExplorerSummary;
+  specs: CampusSpecsSummary;
+  runtime: CampusRuntimeSummary;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -160,10 +320,10 @@ function createParamsCacheKey(params: Params): string {
   ].join("|");
 }
 
-function cacheCampusModel(campus: Campus, cacheKey: string, model: DataCenterModel): void {
+function cacheCampusModel(campus: Campus, cacheKey: string, model: CampusModel): void {
   let cacheForCampus = campusModelCache.get(campus);
   if (!cacheForCampus) {
-    cacheForCampus = new Map<string, DataCenterModel>();
+    cacheForCampus = new Map<string, CampusModel>();
     campusModelCache.set(campus, cacheForCampus);
   }
   if (cacheForCampus.size >= CAMPUS_MODEL_CACHE_PER_CAMPUS_LIMIT && !cacheForCampus.has(cacheKey)) {
@@ -173,6 +333,65 @@ function cacheCampusModel(campus: Campus, cacheKey: string, model: DataCenterMod
     }
   }
   cacheForCampus.set(cacheKey, model);
+}
+
+function incrementProfileMix<T extends string>(counts: Map<T, { hallCount: number; rackCount: number }>, profile: T, rackCount: number): void {
+  const next = counts.get(profile) ?? { hallCount: 0, rackCount: 0 };
+  next.hallCount += 1;
+  next.rackCount += rackCount;
+  counts.set(profile, next);
+}
+
+function resolveDominantProfile<T extends string>(
+  counts: Map<T, { hallCount: number; rackCount: number }>,
+  fallback: T,
+  orderedValues: readonly T[]
+): T {
+  let dominant = fallback;
+  let bestCount = counts.get(fallback)?.hallCount ?? -1;
+
+  orderedValues.forEach((value) => {
+    const hallCount = counts.get(value)?.hallCount ?? 0;
+    if (hallCount > bestCount) {
+      dominant = value;
+      bestCount = hallCount;
+    }
+  });
+
+  return dominant;
+}
+
+function buildProfileMixSummary<T extends string>(
+  counts: Map<T, { hallCount: number; rackCount: number }>,
+  fallback: T,
+  orderedValues: readonly T[]
+): ProfileMixSummary<T> {
+  const entries = orderedValues
+    .map((profile) => {
+      const count = counts.get(profile);
+      if (!count || count.hallCount <= 0) {
+        return null;
+      }
+      return {
+        profile,
+        hallCount: count.hallCount,
+        rackCount: count.rackCount,
+      };
+    })
+    .filter((entry): entry is ProfileMixEntry<T> => entry !== null);
+
+  const dominantProfile = resolveDominantProfile(counts, fallback, orderedValues);
+  if (entries.length === 0) {
+    return {
+      dominantProfile,
+      entries: [{ profile: dominantProfile, hallCount: 0, rackCount: 0 }],
+    };
+  }
+
+  return {
+    dominantProfile,
+    entries,
+  };
 }
 
 function normalizeRackProfilePatch(patch: RackProfilePatch): RackProfilePatch {
@@ -470,7 +689,36 @@ function buildRows(hallIndex: number, rackCount: number, maxRows: number, maxRac
   return { rows, rowCount };
 }
 
-export function computeDataCenterFromCampus(campus: Campus, fallback: Params): DataCenterModel {
+function buildFacilityLoad(criticalKw: number, pue: number): FacilityLoadSummary {
+  const criticalITMW = roundTo(criticalKw / 1000, 2);
+  const totalFacilityMW = roundTo(criticalITMW * pue, 2);
+  const nonITOverheadMW = roundTo(Math.max(0, totalFacilityMW - criticalITMW), 2);
+  return { criticalITMW, totalFacilityMW, nonITOverheadMW };
+}
+
+interface MutableZoneSummary {
+  id: string;
+  zoneIndex: number;
+  name: string;
+  defaultRedundancy: RedundancyProfile;
+  defaultCoolingType: CoolingProfile;
+  defaultContainment: ContainmentProfile;
+  hallCount: number;
+  rackCount: number;
+  rackCapacityBySpace: number;
+  criticalKw: number;
+  criticalITMW: number;
+  totalFacilityMW: number;
+  nonITOverheadMW: number;
+  whitespaceSqFt: number;
+  grossSqFt: number;
+  redundancyMix: Map<RedundancyProfile, { hallCount: number; rackCount: number }>;
+  coolingMix: Map<CoolingProfile, { hallCount: number; rackCount: number }>;
+  containmentMix: Map<ContainmentProfile, { hallCount: number; rackCount: number }>;
+  halls: HallAggregateSummary[];
+}
+
+export function computeCampusModel(campus: Campus, fallback: Params): CampusModel {
   // Assumes immutable campus objects from store updates; repeated calls with the same campus reference
   // are frequent (Specs + Viewport), so cache by object identity for cheap reuse.
   const fallbackKey = createParamsCacheKey(fallback);
@@ -484,14 +732,53 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
   const base = computeDataCenter(params);
 
   const halls: DataCenterModel["halls"] = [];
+  const hallSummaries: HallAggregateSummary[] = [];
   const hallRackDistribution: number[] = [];
+  const zoneSummariesById = new Map<string, MutableZoneSummary>();
+  const zoneOrder: string[] = [];
+  const hallOrder: string[] = [];
+  const hallToZone: Record<string, string> = {};
+
+  const campusRedundancyMix = new Map<RedundancyProfile, { hallCount: number; rackCount: number }>();
+  const campusCoolingMix = new Map<CoolingProfile, { hallCount: number; rackCount: number }>();
+  const campusContainmentMix = new Map<ContainmentProfile, { hallCount: number; rackCount: number }>();
+
   let rackCursor = 1;
   let rackCount = 0;
   let rackCapacityBySpace = 0;
   let criticalKw = 0;
+  let criticalITMW = 0;
+  let totalFacilityMW = 0;
+  let nonITOverheadMW = 0;
+  let whitespaceSqFt = 0;
+  let grossSqFt = 0;
   let baseHallIndex = 0;
 
   for (const zone of normalized.zones) {
+    const zoneSummary: MutableZoneSummary = {
+      id: zone.id,
+      zoneIndex: zone.zoneIndex,
+      name: zone.metadata.name || zone.id,
+      defaultRedundancy: zone.hallDefaults.redundancy,
+      defaultCoolingType: zone.hallDefaults.coolingType,
+      defaultContainment: zone.hallDefaults.containment,
+      hallCount: 0,
+      rackCount: 0,
+      rackCapacityBySpace: 0,
+      criticalKw: 0,
+      criticalITMW: 0,
+      totalFacilityMW: 0,
+      nonITOverheadMW: 0,
+      whitespaceSqFt: 0,
+      grossSqFt: 0,
+      redundancyMix: new Map(),
+      coolingMix: new Map(),
+      containmentMix: new Map(),
+      halls: [],
+    };
+    zoneSummariesById.set(zone.id, zoneSummary);
+    zoneOrder.push(zone.id);
+
     for (const hall of zone.halls) {
       const baseHall = base.halls[baseHallIndex];
       baseHallIndex += 1;
@@ -507,6 +794,11 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
       const maxRows = baseHall?.packing.maxRows ?? Math.max(1, Math.ceil(assignedRackCount / DEFAULT_RACKS_PER_ROW));
       const maxRacksPerRow = baseHall?.packing.maxRacksPerRow ?? DEFAULT_RACKS_PER_ROW;
       const packed = buildRows(hall.hallIndex, assignedRackCount, maxRows, maxRacksPerRow);
+      const hallWhitespaceSqFt = roundTo(baseHall?.whitespaceSqFt ?? 0, 2);
+      const hallGrossSqFt = roundTo(baseHall?.grossSqFt ?? 0, 2);
+      const hallCriticalKw = assignedRackCount * hall.profile.rackDensityKW;
+      const hallFacilityLoad = buildFacilityLoad(hallCriticalKw, params.pue);
+      const hallUtilization = capacity > 0 ? roundTo(assignedRackCount / capacity, 4) : 0;
 
       halls.push({
         id: hall.id,
@@ -514,8 +806,8 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
         rackCount: assignedRackCount,
         rackStartIndex,
         rackEndIndex,
-        whitespaceSqFt: baseHall?.whitespaceSqFt ?? 0,
-        grossSqFt: baseHall?.grossSqFt ?? 0,
+        whitespaceSqFt: hallWhitespaceSqFt,
+        grossSqFt: hallGrossSqFt,
         capacity,
         dimensionsFt: baseHall?.dimensionsFt ?? { width: 0, length: 0 },
         packing: {
@@ -527,31 +819,104 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
         rows: packed.rows,
       });
 
+      const hallSummary: HallAggregateSummary = {
+        id: hall.id,
+        hallIndex: hall.hallIndex,
+        zoneId: zone.id,
+        zoneIndex: zone.zoneIndex,
+        name: hall.metadata.name || hall.id,
+        rackCount: assignedRackCount,
+        capacity,
+        rackCapacityBySpace: capacity,
+        rackDensityKW: hall.profile.rackDensityKW,
+        utilization: hallUtilization,
+        rackStartIndex,
+        rackEndIndex,
+        facilityLoad: hallFacilityLoad,
+        area: {
+          whitespaceSqFt: hallWhitespaceSqFt,
+          grossSqFt: hallGrossSqFt,
+        },
+        profiles: {
+          redundancy: hall.profile.redundancy,
+          coolingType: hall.profile.coolingType,
+          containment: hall.profile.containment,
+        },
+        dimensionsFt: baseHall?.dimensionsFt ?? { width: 0, length: 0 },
+        packing: {
+          rowCount: packed.rowCount,
+          maxRows,
+          targetRacksPerRow: DEFAULT_RACKS_PER_ROW,
+          maxRacksPerRow,
+        },
+        rows: packed.rows,
+        geometry: {
+          dimensionsFt: baseHall?.dimensionsFt ?? { width: 0, length: 0 },
+          packing: {
+            rowCount: packed.rowCount,
+            maxRows,
+            targetRacksPerRow: DEFAULT_RACKS_PER_ROW,
+            maxRacksPerRow,
+          },
+          rows: packed.rows,
+        },
+      };
+
+      hallSummaries.push(hallSummary);
+      zoneSummary.halls.push(hallSummary);
+
+      hallOrder.push(hall.id);
+      hallToZone[hall.id] = zone.id;
       hallRackDistribution.push(assignedRackCount);
+
       rackCount += assignedRackCount;
       rackCapacityBySpace += capacity;
-      criticalKw += assignedRackCount * hall.profile.rackDensityKW;
+      criticalKw += hallCriticalKw;
+      criticalITMW += hallFacilityLoad.criticalITMW;
+      totalFacilityMW += hallFacilityLoad.totalFacilityMW;
+      nonITOverheadMW += hallFacilityLoad.nonITOverheadMW;
+      whitespaceSqFt += hallWhitespaceSqFt;
+      grossSqFt += hallGrossSqFt;
+
+      zoneSummary.hallCount += 1;
+      zoneSummary.rackCount += assignedRackCount;
+      zoneSummary.rackCapacityBySpace += capacity;
+      zoneSummary.criticalKw += hallCriticalKw;
+      zoneSummary.criticalITMW += hallFacilityLoad.criticalITMW;
+      zoneSummary.totalFacilityMW += hallFacilityLoad.totalFacilityMW;
+      zoneSummary.nonITOverheadMW += hallFacilityLoad.nonITOverheadMW;
+      zoneSummary.whitespaceSqFt += hallWhitespaceSqFt;
+      zoneSummary.grossSqFt += hallGrossSqFt;
+
+      incrementProfileMix(zoneSummary.redundancyMix, hall.profile.redundancy, assignedRackCount);
+      incrementProfileMix(zoneSummary.coolingMix, hall.profile.coolingType, assignedRackCount);
+      incrementProfileMix(zoneSummary.containmentMix, hall.profile.containment, assignedRackCount);
+
+      incrementProfileMix(campusRedundancyMix, hall.profile.redundancy, assignedRackCount);
+      incrementProfileMix(campusCoolingMix, hall.profile.coolingType, assignedRackCount);
+      incrementProfileMix(campusContainmentMix, hall.profile.containment, assignedRackCount);
     }
   }
 
-  if (halls.length === 0) {
-    cacheCampusModel(campus, fallbackKey, base);
-    return base;
-  }
-
-  const criticalITMW = roundTo(criticalKw / 1000, 2);
-  const totalFacilityMW = roundTo(criticalITMW * params.pue, 2);
-  const nonITOverheadMW = roundTo(Math.max(0, totalFacilityMW - criticalITMW), 2);
   const averageDensity = rackCount > 0 ? criticalKw / rackCount : params.rackPowerDensity;
-  const rackCountFromPower = Math.max(1, Math.round((criticalITMW * 1000) / Math.max(averageDensity, 0.1)));
+  const rackCountFromPower = rackCount > 0
+    ? Math.max(1, Math.round((criticalKw / Math.max(averageDensity, 0.1))))
+    : 0;
+  const campusFacilityLoad: FacilityLoadSummary = {
+    criticalITMW: roundTo(criticalITMW, 2),
+    totalFacilityMW: roundTo(totalFacilityMW, 2),
+    nonITOverheadMW: roundTo(nonITOverheadMW, 2),
+  };
+  const area: AreaSummary = {
+    whitespaceSqFt: roundTo(whitespaceSqFt, 2),
+    grossFacilitySqFt: roundTo(grossSqFt, 2),
+    hallWhitespaceSqFt: halls.length > 0 ? roundTo(whitespaceSqFt / halls.length, 2) : 0,
+    hallGrossSqFt: halls.length > 0 ? roundTo(grossSqFt / halls.length, 2) : 0,
+  };
 
-  const model: DataCenterModel = {
-    facilityLoad: {
-      criticalITMW,
-      totalFacilityMW,
-      nonITOverheadMW,
-    },
-    area: base.area,
+  const dataCenterModel: DataCenterModel = {
+    facilityLoad: campusFacilityLoad,
+    area,
     rackCount,
     rackCountFromPower,
     rackCapacityBySpace,
@@ -559,9 +924,137 @@ export function computeDataCenterFromCampus(campus: Campus, fallback: Params): D
     halls,
   };
 
-  cacheCampusModel(campus, fallbackKey, model);
+  const zoneSummaries: ZoneAggregateSummary[] = zoneOrder
+    .map((zoneId) => zoneSummariesById.get(zoneId))
+    .filter((entry): entry is MutableZoneSummary => entry !== undefined)
+    .map((zoneSummary) => {
+      const zoneAverageDensity = zoneSummary.rackCount > 0
+        ? zoneSummary.criticalKw / zoneSummary.rackCount
+        : params.rackPowerDensity;
+      const zoneRackCountFromPower = zoneSummary.rackCount > 0
+        ? Math.max(1, Math.round(zoneSummary.criticalKw / Math.max(zoneAverageDensity, 0.1)))
+        : 0;
+      const zoneRedundancyFallback = zoneSummary.halls[0]?.profiles.redundancy ?? zoneSummary.defaultRedundancy;
+      const zoneCoolingFallback = zoneSummary.halls[0]?.profiles.coolingType ?? zoneSummary.defaultCoolingType;
+      const zoneContainmentFallback = zoneSummary.halls[0]?.profiles.containment ?? zoneSummary.defaultContainment;
 
+      return {
+        id: zoneSummary.id,
+        zoneIndex: zoneSummary.zoneIndex,
+        name: zoneSummary.name,
+        hallCount: zoneSummary.hallCount,
+        rackCount: zoneSummary.rackCount,
+        rackCapacityBySpace: zoneSummary.rackCapacityBySpace,
+        utilization: zoneSummary.rackCapacityBySpace > 0
+          ? roundTo(zoneSummary.rackCount / zoneSummary.rackCapacityBySpace, 4)
+          : 0,
+        rackCountFromPower: zoneRackCountFromPower,
+        facilityLoad: {
+          criticalITMW: roundTo(zoneSummary.criticalITMW, 2),
+          totalFacilityMW: roundTo(zoneSummary.totalFacilityMW, 2),
+          nonITOverheadMW: roundTo(zoneSummary.nonITOverheadMW, 2),
+        },
+        area: {
+          whitespaceSqFt: roundTo(zoneSummary.whitespaceSqFt, 2),
+          grossSqFt: roundTo(zoneSummary.grossSqFt, 2),
+        },
+        profiles: {
+          redundancy: buildProfileMixSummary(
+            zoneSummary.redundancyMix,
+            zoneRedundancyFallback,
+            REDUNDANCY_ORDER
+          ),
+          coolingType: buildProfileMixSummary(
+            zoneSummary.coolingMix,
+            zoneCoolingFallback,
+            COOLING_ORDER
+          ),
+          containment: buildProfileMixSummary(
+            zoneSummary.containmentMix,
+            zoneContainmentFallback,
+            CONTAINMENT_ORDER
+          ),
+        },
+        halls: zoneSummary.halls,
+      };
+    });
+
+  const zonesById: Record<string, ZoneAggregateSummary> = {};
+  zoneSummaries.forEach((zoneSummary) => {
+    zonesById[zoneSummary.id] = zoneSummary;
+  });
+
+  const hallsById: Record<string, HallAggregateSummary> = {};
+  hallSummaries.forEach((hallSummary) => {
+    hallsById[hallSummary.id] = hallSummary;
+  });
+
+  const campusSummary: CampusAggregateSummary = {
+    id: normalized.id,
+    name: normalized.metadata.name || normalized.id,
+    zoneCount: zoneSummaries.length,
+    hallCount: halls.length,
+    rackCount,
+    rackCapacityBySpace,
+    utilization: rackCapacityBySpace > 0 ? roundTo(rackCount / rackCapacityBySpace, 4) : 0,
+    rackCountFromPower,
+    facilityLoad: campusFacilityLoad,
+    area,
+    profiles: {
+      redundancy: buildProfileMixSummary(campusRedundancyMix, params.redundancy, REDUNDANCY_ORDER),
+      coolingType: buildProfileMixSummary(campusCoolingMix, params.coolingType, COOLING_ORDER),
+      containment: buildProfileMixSummary(campusContainmentMix, params.containment, CONTAINMENT_ORDER),
+    },
+  };
+
+  const explorer: CampusExplorerSummary = {
+    campusId: campusSummary.id,
+    campusName: campusSummary.name,
+    zoneCount: campusSummary.zoneCount,
+    hallCount: campusSummary.hallCount,
+    rackCount: campusSummary.rackCount,
+    zones: zoneSummaries.map((zoneSummary) => ({
+      id: zoneSummary.id,
+      name: zoneSummary.name,
+      zoneIndex: zoneSummary.zoneIndex,
+      hallCount: zoneSummary.hallCount,
+      rackCount: zoneSummary.rackCount,
+      halls: zoneSummary.halls.map((hallSummary) => ({
+        id: hallSummary.id,
+        name: hallSummary.name,
+        hallIndex: hallSummary.hallIndex,
+        rackCount: hallSummary.rackCount,
+        rackCapacityBySpace: hallSummary.rackCapacityBySpace,
+        utilization: hallSummary.utilization,
+      })),
+    })),
+  };
+
+  const model: CampusModel = {
+    params,
+    campus: campusSummary,
+    zones: zoneSummaries,
+    halls: hallSummaries,
+    explorer,
+    specs: {
+      campus: campusSummary,
+      zonesById,
+      hallsById,
+    },
+    runtime: {
+      dataCenter: dataCenterModel,
+      zoneOrder,
+      hallOrder,
+      hallToZone,
+    },
+  };
+
+  cacheCampusModel(campus, fallbackKey, model);
   return model;
+}
+
+export function computeDataCenterFromCampus(campus: Campus, fallback: Params): DataCenterModel {
+  return computeCampusModel(campus, fallback).runtime.dataCenter;
 }
 
 export function validateCampus(campus: Campus): CampusValidationIssue[] {

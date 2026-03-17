@@ -1,6 +1,6 @@
 # Security Policy
 
-DC Simulator is currently a client-heavy Next.js 14 web app with one public route, no authentication layer, no API routes, no database, and no required environment variables. The main security risks in this repo are browser-exposed secrets, unsafe future server features, unsafe third-party embeds, and client-side injection bugs.
+DC Simulator is currently a client-heavy Next.js 15 web app with one public route, no authentication layer, no API routes, no database, and no required environment variables. The main security risks in this repo are browser-exposed secrets, unsafe future server features, unsafe third-party embeds, and client-side injection bugs.
 
 Treat security requirements as non-optional.
 
@@ -17,6 +17,8 @@ Treat security requirements as non-optional.
 - Rendering and UI logic live in `src/scene/`, `src/ui/`, `src/state/`, and `src/model/`.
 - There is no trusted backend in this repository today. Do not assume hidden buttons or client-only checks create security boundaries.
 - This repo is expected to stay deployable on Vercel, Netlify, and Cloud Run using standard Next.js build and start commands.
+- Baseline browser hardening headers are configured in `next.config.js`.
+- The supported framework dependency line is `next@15.5.13` until a newer patched release is intentionally adopted.
 
 ## Core Rules
 

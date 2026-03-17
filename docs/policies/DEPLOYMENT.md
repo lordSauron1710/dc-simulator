@@ -4,9 +4,10 @@ DC Simulator must remain deployable on Vercel, Netlify, and Cloud Run using stan
 
 ## Current Deployment Shape
 
-- Framework: Next.js 14 App Router
+- Framework: Next.js 15 App Router
 - Standard commands: `npm run build`, `npm run start`
 - Current runtime posture: frontend-first, no auth layer, no database, no API routes
+- Baseline browser security headers are served through `next.config.js`.
 
 ## Deployment Rules
 

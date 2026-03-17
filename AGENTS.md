@@ -28,7 +28,7 @@ Prioritise **high spatial awareness** and strong **3D construction ability** acr
 
 | Layer | Choice | Notes |
 |-------|--------|--------|
-| Framework | Next.js 14 (App Router) | Single route `/`; use `app/` for layout and page. |
+| Framework | Next.js 15 (App Router) | Single route `/`; use `app/` for layout and page. |
 | Language | TypeScript (strict) | Strict mode on; no `any` without justification. |
 | UI | React 18 | Client components where state/effects are needed; server components where not. |
 | Styling | CSS (globals + variables) | Design tokens in `app/globals.css`; avoid one-off inline styles for layout/theme. |
@@ -212,7 +212,7 @@ Implement a global store with:
 
 - **Goal:** Visually creative, deployable 3D data center webapp.
 - **Mindset:** Senior dev — simple, typed, user- and deployment-aware.
-- **Stack:** Next.js 14, TypeScript (strict), React, CSS variables, Three.js (planned).
+- **Stack:** Next.js 15, TypeScript (strict), React, CSS variables, Three.js (planned).
 - **Deployability:** Design for Vercel, Netlify, and Cloud Run — static/hybrid build, env-based config, no host-specific assumptions.
 - **Security docs:** Follow `docs/policies/POLICY_INDEX.md` and the relevant policy Markdown files without overriding the repo's product goal or architecture.
 - **Key files:** `docs/project/roadmap.md` (prompts), `README.md` (docs), `docs/project/errors.md` (lessons), and the security policy set.

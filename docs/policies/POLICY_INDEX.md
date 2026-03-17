@@ -20,11 +20,17 @@ This file is the entrypoint for the repository security policy set.
 
 ## Read These For Every Change
 
-- [AGENTS.md](./AGENTS.md)
+- [AGENTS.md](../../AGENTS.md)
 - [SECURITY.md](./SECURITY.md)
 - [ACCESSIBILITY.md](./ACCESSIBILITY.md)
 - [ENV_VARIABLES.md](./ENV_VARIABLES.md)
 - [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+## Tooling Compatibility
+
+- The canonical policy set lives under `docs/policies/`.
+- Root-level policy stub files exist only so `npx secure-repo audit` can discover the expected filenames.
+- If a root stub and a canonical policy file ever diverge, the canonical file in `docs/policies/` wins.
 
 ## Read These When Introducing New Surface Area
 

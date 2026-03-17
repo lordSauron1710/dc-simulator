@@ -104,6 +104,22 @@ test("loads the core shell cleanly", async ({ page, pageErrors }) => {
   await expect(page.locator(".builder-summary-inline")).toContainText("halls");
 });
 
+test("serves the baseline security headers", async ({ request, pageErrors }) => {
+  void pageErrors;
+
+  const response = await request.get("/");
+  const headers = response.headers();
+
+  expect(response.ok()).toBeTruthy();
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(headers["x-frame-options"]).toBe("DENY");
+  expect(headers["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
+  expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(headers["content-security-policy"]).toContain("object-src 'none'");
+  expect(headers["x-powered-by"]).toBeUndefined();
+});
+
 test("minimizes and restores every major panel", async ({ page, pageErrors }) => {
   void pageErrors;
 

@@ -192,7 +192,6 @@ interface CutawayEntry {
 }
 
 interface SelectionScopeState {
-  mode: "focus" | "isolate";
   scopeType: "campus" | "zone" | "hall" | "rack";
   activeHallIds: Set<string>;
   rackId: string | null;
@@ -887,16 +886,8 @@ export function Viewport() {
   }, [campusModel, selectionScope]);
   const totalHallCount = campusModel.halls.length;
   const totalRackCount = campusModel.campus.rackCount;
-  const visibleHallCount =
-    state.ui.selectionDisplayMode === "isolate"
-      ? selectionScope.type === "rack"
-        ? 0
-        : selectionScope.hallIds.length
-      : totalHallCount;
-  const visibleRackCount =
-    state.ui.selectionDisplayMode === "isolate"
-      ? selectionScopedRackCount
-      : totalRackCount;
+  const visibleHallCount = totalHallCount;
+  const visibleRackCount = totalRackCount;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -923,7 +914,6 @@ export function Viewport() {
   const viewModeRef = useRef(state.viewMode);
   const scrollFlowEnabledRef = useRef(state.ui.scrollFlowEnabled);
   const cutawayEnabledRef = useRef(state.ui.cutawayEnabled);
-  const selectionDisplayModeRef = useRef(state.ui.selectionDisplayMode);
   const hallSelectionObjectsRef = useRef<Map<string, THREE.Object3D[]>>(new Map());
   const globalSelectionObjectsRef = useRef<THREE.Object3D[]>([]);
   const rackBaseMatricesRef = useRef<THREE.Matrix4[]>([]);
@@ -1258,9 +1248,9 @@ export function Viewport() {
       const hovered = hoveredRef.current;
       const hoveredKey = hovered?.entityKey ?? null;
       const resolvedScope = resolveSelectionScope(campusModelRef.current, selectionRef.current);
-      const selectionMode = selectionDisplayModeRef.current;
+      const selection = selectionRef.current;
       const activeHallIds = new Set(resolvedScope.hallIds);
-      const scopeSignature = `${selectionMode}|${resolvedScope.type}|${resolvedScope.selectionId}`;
+      const scopeSignature = `${resolvedScope.type}|${resolvedScope.selectionId}`;
       const rackMesh = rackMeshRef.current;
       const rackProfile = rackColorProfileRef.current;
 
@@ -1308,11 +1298,6 @@ export function Viewport() {
         const inScope = isHallInScope(hallId);
         objects.forEach((object) => {
           const baseVisible = object.visible;
-          if (selectionMode === "isolate") {
-            object.visible = baseVisible && resolvedScope.type !== "rack" && inScope;
-            return;
-          }
-
           object.visible = baseVisible;
           if (!baseVisible) {
             return;
@@ -1324,11 +1309,6 @@ export function Viewport() {
 
       globalSelectionObjectsRef.current.forEach((object) => {
         const baseVisible = object.visible;
-        if (selectionMode === "isolate") {
-          object.visible = baseVisible && resolvedScope.type === "campus";
-          return;
-        }
-
         object.visible = baseVisible;
         if (!baseVisible) {
           return;
@@ -1339,24 +1319,12 @@ export function Viewport() {
 
       if (scopeSignature !== selectionScopeSignatureRef.current) {
         if (rackMesh && rackProfile) {
-          const hiddenRackPosition = new THREE.Vector3(0, -9999, 0);
-          const hiddenRackScale = new THREE.Vector3(0.0001, 0.0001, 0.0001);
-          const hiddenRackQuaternion = new THREE.Quaternion();
-          const hiddenRackMatrix = new THREE.Matrix4().compose(
-            hiddenRackPosition,
-            hiddenRackQuaternion,
-            hiddenRackScale
-          );
-
           for (let index = 0; index < rackMesh.count; index += 1) {
             const rackId = rackInstanceIdsRef.current[index];
             const hallId = rackIdToHallIdRef.current.get(rackId) ?? null;
             const inScope = isRackInScope(rackId, hallId);
             const baseMatrix = rackBaseMatricesRef.current[index];
-            rackMesh.setMatrixAt(
-              index,
-              selectionMode === "isolate" && !inScope ? hiddenRackMatrix : baseMatrix
-            );
+            rackMesh.setMatrixAt(index, baseMatrix);
             rackMesh.setColorAt(index, inScope ? rackProfile.base : rackProfile.inactive);
           }
 
@@ -1367,7 +1335,6 @@ export function Viewport() {
         }
 
         selectionScopeStateRef.current = {
-          mode: selectionMode,
           scopeType: resolvedScope.type,
           activeHallIds,
           rackId: resolvedScope.rackId,
@@ -1388,9 +1355,9 @@ export function Viewport() {
         const hoveredMatch = hoveredKey === entity.key;
         const selectionMatch =
           entity.type === "building"
-            ? resolvedScope.type === "campus"
+            ? selection.type === "campus"
             : entity.type === "hall"
-              ? activeHallIds.has(entity.id)
+              ? selection.type !== null && selection.type !== "campus" && activeHallIds.has(entity.id)
               : false;
         const visibleOpacity = material.opacity;
         material.color.setHex(
@@ -1415,7 +1382,6 @@ export function Viewport() {
       }
 
       const hoveredIndex = hovered?.type === "rack" ? hovered.rackInstanceIndex : null;
-      const selection = selectionRef.current;
       const selectedIndex =
         selection.type === "rack"
           ? rackIdToInstanceRef.current.get(selection.id) ?? null
@@ -3183,12 +3149,6 @@ export function Viewport() {
   }, [state.ui.cutawayEnabled]);
 
   useEffect(() => {
-    selectionDisplayModeRef.current = state.ui.selectionDisplayMode;
-    applyVisualStateRef.current();
-    renderSceneRef.current();
-  }, [state.ui.selectionDisplayMode]);
-
-  useEffect(() => {
     if (state.ui.cameraResetNonce <= 0) {
       return;
     }
@@ -3200,7 +3160,6 @@ export function Viewport() {
       ref={mountRef}
       className="viewport"
       aria-label="3D data center viewport"
-      data-selection-mode={state.ui.selectionDisplayMode}
       data-selection-type={state.selection.type ?? "none"}
       data-selection-scope-type={selectionScope.type}
       data-selection-scope-id={selectionScope.selectionId}

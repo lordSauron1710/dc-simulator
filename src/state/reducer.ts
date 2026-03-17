@@ -48,11 +48,6 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
         ...state,
         ui: { ...state.ui, cutawayEnabled: action.payload },
       };
-    case "SET_SELECTION_DISPLAY_MODE":
-      return {
-        ...state,
-        ui: { ...state.ui, selectionDisplayMode: action.payload },
-      };
     case "SET_UI":
       return { ...state, ui: { ...state.ui, ...action.payload } };
     case "TOGGLE_DRAWER":

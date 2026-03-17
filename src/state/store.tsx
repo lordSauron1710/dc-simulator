@@ -10,7 +10,6 @@ import {
   setCampusAndParams,
   setSelection,
   setCutawayEnabled,
-  setSelectionDisplayMode,
   setScrollFlowEnabled,
   setViewMode,
   setUI,
@@ -19,7 +18,6 @@ import {
 } from "./actions";
 import { storeReducer, getInitialState } from "./reducer";
 import { parseStateFromSearch } from "./urlState";
-import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 interface StoreContextValue {
   state: AppState;
@@ -32,7 +30,6 @@ interface StoreContextValue {
   setViewMode: (mode: ViewMode) => void;
   setCutawayEnabled: (enabled: boolean) => void;
   setScrollFlowEnabled: (enabled: boolean) => void;
-  setSelectionDisplayMode: (mode: SelectionDisplayMode) => void;
   resetCamera: () => void;
   setDrawerOpen: (open: boolean) => void;
   toggleDrawer: () => void;
@@ -86,10 +83,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     dispatch(setScrollFlowEnabled(enabled));
   }, []);
 
-  const setSelectionDisplayModeAction = useCallback((mode: SelectionDisplayMode) => {
-    dispatch(setSelectionDisplayMode(mode));
-  }, []);
-
   const resetCamera = useCallback(() => {
     dispatch(requestCameraReset());
   }, []);
@@ -113,7 +106,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setViewMode: setViewModeAction,
       setCutawayEnabled: setCutawayEnabledAction,
       setScrollFlowEnabled: setScrollFlowEnabledAction,
-      setSelectionDisplayMode: setSelectionDisplayModeAction,
       resetCamera,
       setDrawerOpen,
       toggleDrawer: toggleDrawerAction,
@@ -127,7 +119,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setViewModeAction,
       setCutawayEnabledAction,
       setScrollFlowEnabledAction,
-      setSelectionDisplayModeAction,
       resetCamera,
       setDrawerOpen,
       toggleDrawerAction,

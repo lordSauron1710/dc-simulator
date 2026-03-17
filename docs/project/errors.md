@@ -109,6 +109,13 @@ Use this file to log bugs and fixes so the same mistakes are not repeated. When 
 - **Fix:** Disabled internal overflow clipping for left-rail cards and updated adaptive dropdown placement to compute available room within clipping scroll containers, flipping upward when below-space is constrained.
 - **Lesson:** Overlay-style menus in constrained panels need both non-clipping parent containers and direction-aware placement logic.
 
+### [Selection scope should return cleanly to full view]
+
+- **Symptom:** Prompt 19 selection controls felt off because rack/zone focus depended on an extra isolate mode and there was no clean way to deselect back to the complete campus view.
+- **Root cause:** Viewport presentation was modeled with a second selection display mode flag even though the scene scope was already derivable from the selection itself.
+- **Fix:** Removed selection display mode state and URL flags, made focus implicit from the active selection, and added an explicit clear-selection path that restores full-view campus rendering.
+- **Lesson:** If scope can be derived from selection, keep "full view" as the absence of selection instead of introducing a second view-mode flag.
+
 ---
 
 ## Environment & types

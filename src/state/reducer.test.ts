@@ -7,10 +7,9 @@ import {
   setCampus,
   setCampusAndParams,
   setSelection,
-  setSelectionDisplayMode,
 } from "./actions";
 import { storeReducer } from "./reducer";
-import { DEFAULT_PARAMS, DEFAULT_STATE } from "./types";
+import { DEFAULT_PARAMS, DEFAULT_SELECTION, DEFAULT_STATE } from "./types";
 
 describe("storeReducer campus/parameter consistency", () => {
   it("PATCH_PARAMS remaps campus from current parameter baseline", () => {
@@ -86,7 +85,7 @@ describe("storeReducer campus/parameter consistency", () => {
     });
   });
 
-  it("SET_SELECTION falls back to the campus scope when the target is invalid", () => {
+  it("SET_SELECTION clears selection when the target is invalid", () => {
     const customCampus = createCampusFixture();
     const state = {
       ...DEFAULT_STATE,
@@ -96,10 +95,10 @@ describe("storeReducer campus/parameter consistency", () => {
 
     const next = storeReducer(state, setSelection({ id: "Z-99", type: "zone" }));
 
-    expect(next.selection).toEqual({ id: customCampus.id, type: "campus" });
+    expect(next.selection).toEqual(DEFAULT_SELECTION);
   });
 
-  it("SET_CAMPUS remaps stale selection when the selected zone is removed", () => {
+  it("SET_CAMPUS clears stale selection when the selected zone is removed", () => {
     const customCampus = createCampusFixture();
     const state = {
       ...DEFAULT_STATE,
@@ -114,12 +113,12 @@ describe("storeReducer campus/parameter consistency", () => {
 
     const next = storeReducer(state, setCampus(nextCampus));
 
-    expect(next.selection).toEqual({ id: nextCampus.id, type: "campus" });
+    expect(next.selection).toEqual(DEFAULT_SELECTION);
   });
 
-  it("SET_SELECTION_DISPLAY_MODE updates the selection visibility mode", () => {
-    const next = storeReducer(DEFAULT_STATE, setSelectionDisplayMode("isolate"));
+  it("SET_SELECTION preserves an explicit clear-selection state", () => {
+    const next = storeReducer(DEFAULT_STATE, setSelection(DEFAULT_SELECTION));
 
-    expect(next.ui.selectionDisplayMode).toBe("isolate");
+    expect(next.selection).toEqual(DEFAULT_SELECTION);
   });
 });

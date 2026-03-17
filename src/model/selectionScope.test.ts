@@ -21,20 +21,24 @@ describe("selectionScope", () => {
     expect(normalizeLegacySelectionType("building")).toBe("campus");
   });
 
-  it("falls back to the campus selection when the target is invalid", () => {
+  it("clears selection when the target is invalid", () => {
     const { campus } = createScopeFixture();
 
     expect(sanitizeSelection(campus, { id: "Z-99", type: "zone" })).toEqual({
-      id: campus.id,
-      type: "campus",
+      id: "",
+      type: null,
     });
     expect(sanitizeSelection(campus, { id: "H-99", type: "hall" })).toEqual({
-      id: campus.id,
-      type: "campus",
+      id: "",
+      type: null,
     });
     expect(sanitizeSelection(campus, { id: "R-9999", type: "rack" })).toEqual({
-      id: campus.id,
-      type: "campus",
+      id: "",
+      type: null,
+    });
+    expect(sanitizeSelection(campus, { id: "ignored", type: null })).toEqual({
+      id: "",
+      type: null,
     });
   });
 

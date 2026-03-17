@@ -18,7 +18,6 @@ import {
   type Rack,
   type EntityMetadata,
 } from "@/model";
-import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 /** Power redundancy topology per Uptime Institute tiers */
 export type Redundancy = "N" | "N+1" | "2N";
@@ -64,7 +63,6 @@ export interface UIState {
   cameraResetNonce: number;
   scrollFlowEnabled: boolean;
   cutawayEnabled: boolean;
-  selectionDisplayMode: SelectionDisplayMode;
 }
 
 export interface AppState {
@@ -102,8 +100,8 @@ export const DEFAULT_PARAMS: Params = {
 export const DEFAULT_CAMPUS: Campus = buildDefaultCampusFromParams(DEFAULT_PARAMS);
 
 export const DEFAULT_SELECTION: Selection = {
-  id: DEFAULT_CAMPUS.id,
-  type: "campus",
+  id: "",
+  type: null,
 };
 
 export const DEFAULT_UI: UIState = {
@@ -111,7 +109,6 @@ export const DEFAULT_UI: UIState = {
   cameraResetNonce: 0,
   scrollFlowEnabled: false,
   cutawayEnabled: false,
-  selectionDisplayMode: "focus",
 };
 
 export const DEFAULT_STATE: AppState = {

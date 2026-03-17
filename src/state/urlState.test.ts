@@ -28,10 +28,8 @@ describe("urlState", () => {
     };
 
     const search = serializeStateToSearch(state);
-    const query = new URLSearchParams(search);
     const parsed = parseStateFromSearch(search);
 
-    expect(query.get("sm")).toBe("focus");
     expect(parsed).toEqual({
       params: state.params,
       selection: state.selection,
@@ -39,23 +37,26 @@ describe("urlState", () => {
       ui: {
         scrollFlowEnabled: true,
         cutawayEnabled: true,
-        selectionDisplayMode: "focus",
       },
     });
   });
 
-  it("parses legacy building selections and isolate mode from shared URLs", () => {
-    const parsed = parseStateFromSearch("sel=building:B-01&sm=isolate");
+  it("parses legacy building selections from shared URLs", () => {
+    const parsed = parseStateFromSearch("sel=building:B-01");
 
     expect(parsed).toEqual({
       selection: {
         id: "B-01",
         type: "campus",
       },
-      ui: {
-        selectionDisplayMode: "isolate",
-      },
     });
+  });
+
+  it("omits selection from the share URL when the viewport is in full-view mode", () => {
+    const search = serializeStateToSearch(DEFAULT_STATE);
+    const query = new URLSearchParams(search);
+
+    expect(query.has("sel")).toBe(false);
   });
 
   it("clamps numeric values and ignores invalid enums", () => {

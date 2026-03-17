@@ -173,13 +173,11 @@ test("persists control toggles and camera mode across reloads", async ({ page, p
   await openApp(page);
 
   await page.getByRole("button", { name: "Pan Mode" }).click();
-  await page.getByRole("button", { name: "Selection Isolate Mode" }).click();
   await page.getByRole("button", { name: /Scroll Flow: Off/i }).click();
   await page.getByRole("button", { name: /Cutaway Mode: Off/i }).click();
 
   await expectQueryParams(page, {
     vm: "pan",
-    sm: "isolate",
     sf: "1",
     cw: "1",
   });
@@ -187,7 +185,6 @@ test("persists control toggles and camera mode across reloads", async ({ page, p
   await page.reload();
 
   await expect(page.getByRole("button", { name: "Pan Mode" })).toHaveClass(/active/);
-  await expect(page.getByRole("button", { name: "Selection Isolate Mode" })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: /Scroll Flow: On/i })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: /Cutaway Mode: On/i })).toHaveClass(/active/);
 });
@@ -239,21 +236,24 @@ test("hydrates safely at extreme public input ranges", async ({ page, pageErrors
   await expect(page.getByText("Configuration valid")).toBeVisible();
 });
 
-test("applies rack isolate and zone-to-campus scope transitions without leaking viewport scope", async ({ page, pageErrors }) => {
+test("applies focus scopes and returns to full view without leaking viewport state", async ({ page, pageErrors }) => {
   void pageErrors;
 
   const rackSelectionSearch = new URLSearchParams({
     sel: "rack:R-0001",
-    sm: "isolate",
   }).toString();
 
   await openApp(page, `?${rackSelectionSearch}`);
 
+  const initialTotalHallCount = await viewport(page).getAttribute("data-selection-total-hall-count");
+  const initialTotalRackCount = await viewport(page).getAttribute("data-selection-total-rack-count");
+
   await expect(viewport(page)).toHaveAttribute("data-selection-type", "rack");
-  await expect(viewport(page)).toHaveAttribute("data-selection-mode", "isolate");
   await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "rack");
-  await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", "1");
-  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "0");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-rack-id", "R-0001");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-rack-count", "1");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", initialTotalHallCount ?? "");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", initialTotalRackCount ?? "");
   await expect(page.locator(".inspector-selection")).toContainText("R-0001");
 
   await openApp(page);
@@ -261,25 +261,27 @@ test("applies rack isolate and zone-to-campus scope transitions without leaking 
 
   const secondZone = page.locator(".builder-zone-block").nth(1);
   await secondZone.locator(".builder-node-main").click();
-  await page.getByRole("button", { name: "Selection Isolate Mode" }).click();
+
+  const totalHallCount = await viewport(page).getAttribute("data-selection-total-hall-count");
+  const totalRackCount = await viewport(page).getAttribute("data-selection-total-rack-count");
 
   await expect(viewport(page)).toHaveAttribute("data-selection-type", "zone");
-  await expect(viewport(page)).toHaveAttribute("data-selection-mode", "isolate");
   await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "zone");
   await expect(viewport(page)).toHaveAttribute("data-selection-scope-id", "Z-02");
   await expect(viewport(page)).toHaveAttribute("data-selection-scope-hall-ids", "H-03");
-  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "1");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", totalHallCount ?? "");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", totalRackCount ?? "");
   await expect(viewport(page)).toHaveAttribute("data-selection-total-hall-count", "3");
   await expect(page.locator(".inspector-selection")).toContainText("Zone B");
 
-  await page.locator(".builder-node-campus .builder-node-main").click();
+  await page.getByRole("button", { name: "Return to Full View" }).click();
 
-  const totalRackCount = await viewport(page).getAttribute("data-selection-total-rack-count");
-
-  await expect(viewport(page)).toHaveAttribute("data-selection-type", "campus");
+  await expect(viewport(page)).toHaveAttribute("data-selection-type", "none");
   await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "campus");
   await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "3");
   await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", totalRackCount ?? "");
+  await expect(page.getByRole("button", { name: "Full View Active" })).toHaveClass(/active/);
+  await expect.poll(() => getQueryParam(page, "sel")).toBeNull();
 });
 
 test("keeps mobile controls recoverable after the auto-minimize pass", async ({ page, pageErrors }) => {

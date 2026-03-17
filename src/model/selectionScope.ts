@@ -1,7 +1,6 @@
 import type { Campus } from "./campus";
 import type { CampusModel } from "./campusBuilder";
 
-export type SelectionDisplayMode = "focus" | "isolate";
 export type SelectionLikeType = "campus" | "zone" | "hall" | "rack" | null;
 
 export interface SelectionLike {
@@ -36,6 +35,13 @@ function buildCampusSelection(campus: Campus): SelectionLike {
   return {
     id: campus.id,
     type: "campus",
+  };
+}
+
+function buildClearedSelection(): SelectionLike {
+  return {
+    id: "",
+    type: null,
   };
 }
 
@@ -76,24 +82,28 @@ export function normalizeLegacySelectionType(type: string | null): SelectionLike
 }
 
 export function sanitizeSelection(campus: Campus, selection: SelectionLike): SelectionLike {
+  if (selection.type === null) {
+    return buildClearedSelection();
+  }
+
   if (selection.type === "campus") {
     return buildCampusSelection(campus);
   }
 
   if (selection.type === "zone") {
     const zone = campus.zones.find((entry) => entry.id === selection.id);
-    return zone ? selection : buildCampusSelection(campus);
+    return zone ? selection : buildClearedSelection();
   }
 
   if (selection.type === "hall") {
-    return findHallById(campus, selection.id) ? selection : buildCampusSelection(campus);
+    return findHallById(campus, selection.id) ? selection : buildClearedSelection();
   }
 
   if (selection.type === "rack") {
-    return findHallByRackId(campus, selection.id) ? selection : buildCampusSelection(campus);
+    return findHallByRackId(campus, selection.id) ? selection : buildClearedSelection();
   }
 
-  return buildCampusSelection(campus);
+  return buildClearedSelection();
 }
 
 export function sanitizeSelectionForCampus<T extends { campus: Campus; selection: SelectionLike }>(state: T): T {

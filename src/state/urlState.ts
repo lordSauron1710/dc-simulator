@@ -8,7 +8,6 @@ import type {
   SelectionType,
   ViewMode,
 } from "./types";
-import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 const VALID_REDUNDANCY = new Set<Redundancy>(["N", "N+1", "2N"]);
 const VALID_COOLING = new Set<CoolingType>(["Air-Cooled", "DLC", "Hybrid"]);
@@ -20,7 +19,6 @@ const VALID_CONTAINMENT = new Set<ContainmentType>([
 ]);
 const VALID_VIEW_MODE = new Set<ViewMode>(["orbit", "pan"]);
 const VALID_SELECTION_TYPE = new Set<SelectionType>(["campus", "zone", "hall", "rack", null]);
-const VALID_SELECTION_DISPLAY_MODE = new Set<SelectionDisplayMode>(["focus", "isolate"]);
 
 interface ParamRange {
   min: number;
@@ -151,11 +149,6 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
 
   const scrollFlow = parseBoolean(query.get("sf"));
   const cutawayEnabled = parseBoolean(query.get("cw"));
-  const selectionDisplayModeCandidate = query.get("sm") as SelectionDisplayMode | null;
-  const selectionDisplayMode =
-    selectionDisplayModeCandidate && VALID_SELECTION_DISPLAY_MODE.has(selectionDisplayModeCandidate)
-      ? selectionDisplayModeCandidate
-      : null;
 
   const nextState: Partial<AppState> = {};
   if (Object.keys(paramsPatch).length > 0) {
@@ -167,11 +160,10 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
   if (viewMode) {
     nextState.viewMode = viewMode;
   }
-  if (scrollFlow !== null || cutawayEnabled !== null || selectionDisplayMode !== null) {
+  if (scrollFlow !== null || cutawayEnabled !== null) {
     nextState.ui = {
       ...(scrollFlow !== null ? { scrollFlowEnabled: scrollFlow } : {}),
       ...(cutawayEnabled !== null ? { cutawayEnabled } : {}),
-      ...(selectionDisplayMode !== null ? { selectionDisplayMode } : {}),
     } as AppState["ui"];
   }
 
@@ -198,7 +190,6 @@ export function serializeStateToSearch(state: AppState): string {
   query.set("vm", state.viewMode);
   query.set("sf", state.ui.scrollFlowEnabled ? "1" : "0");
   query.set("cw", state.ui.cutawayEnabled ? "1" : "0");
-  query.set("sm", state.ui.selectionDisplayMode);
 
   return query.toString();
 }

@@ -8,6 +8,7 @@ import { BottomControls } from "@/ui/BottomControls";
 import { CampusBuilderPanel } from "@/ui/CampusBuilderPanel";
 import { CampusParametersPanel, type ParameterFocusRequest } from "@/ui/CampusParametersPanel";
 import {
+  DEFAULT_SELECTION,
   detectPresetId,
   getPresetById,
   serializeStateToSearch,
@@ -25,7 +26,6 @@ export default function SandboxPage() {
     setViewMode,
     setCutawayEnabled,
     setScrollFlowEnabled,
-    setSelectionDisplayMode,
     resetCamera,
     updateParams,
     updateCampusAndParams,
@@ -84,6 +84,9 @@ export default function SandboxPage() {
     setPresetsMinimized(nextMinimized);
     setControlsMinimized(nextMinimized);
   }, [allPanelsMinimized]);
+  const handleClearSelection = useCallback(() => {
+    select(DEFAULT_SELECTION);
+  }, [select]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -112,7 +115,6 @@ export default function SandboxPage() {
     state.viewMode,
     state.ui.scrollFlowEnabled,
     state.ui.cutawayEnabled,
-    state.ui.selectionDisplayMode,
   ]);
 
   useEffect(() => {
@@ -391,14 +393,14 @@ export default function SandboxPage() {
             viewMode={state.viewMode}
             onViewModeChange={setViewMode}
             scrollFlowEnabled={state.ui.scrollFlowEnabled}
-          onScrollFlowChange={setScrollFlowEnabled}
-          cutawayEnabled={state.ui.cutawayEnabled}
-          onCutawayChange={setCutawayEnabled}
-          selectionDisplayMode={state.ui.selectionDisplayMode}
-          onSelectionDisplayModeChange={setSelectionDisplayMode}
-          onResetCamera={resetCamera}
-          isMinimized={controlsMinimized}
-          onMinimizedChange={setControlsMinimized}
+            onScrollFlowChange={setScrollFlowEnabled}
+            cutawayEnabled={state.ui.cutawayEnabled}
+            onCutawayChange={setCutawayEnabled}
+            selectionType={state.selection.type}
+            onClearSelection={handleClearSelection}
+            onResetCamera={resetCamera}
+            isMinimized={controlsMinimized}
+            onMinimizedChange={setControlsMinimized}
           />
         </div>
       </div>

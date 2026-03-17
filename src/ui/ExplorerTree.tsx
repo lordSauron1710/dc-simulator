@@ -88,8 +88,8 @@ export function ExplorerTree({
         icon="🌐"
         hasChildren
         isExpanded
-        isActive={selection.type === "campus"}
-        onClick={() => onSelect?.(campusModel.explorer.campusId, "campus")}
+        isActive={selection.type === null || selection.type === "campus"}
+        onClick={() => onSelect?.("", null)}
       />
 
       {campusModel.explorer.zones.map((zone) => (

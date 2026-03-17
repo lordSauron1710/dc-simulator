@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { computeDataCenterFromCampus, type DataCenterModel } from "@/model";
+import { computeCampusModel, type DataCenterModel } from "@/model";
+import { resolveSelectionScope } from "@/model/selectionScope";
 import { useStore } from "@/state";
 import type { Params } from "@/state/types";
 
@@ -71,6 +72,7 @@ interface HoverTarget {
 
 interface RackColorProfile {
   base: THREE.Color;
+  inactive: THREE.Color;
   hover: THREE.Color;
   selected: THREE.Color;
 }
@@ -187,6 +189,13 @@ interface CutawayEntry {
   hideWhenCutaway: boolean;
   opacityScale: number;
   materials: Array<{ material: THREE.Material; baseOpacity: number }>;
+}
+
+interface SelectionScopeState {
+  mode: "focus" | "isolate";
+  scopeType: "campus" | "zone" | "hall" | "rack";
+  activeHallIds: Set<string>;
+  rackId: string | null;
 }
 
 type DetailTier = "high" | "medium" | "low";
@@ -860,7 +869,34 @@ function deriveSceneScale(params: Params, model: DataCenterModel): SceneScale {
 export function Viewport() {
   const { state, select } = useStore();
   const { params, campus } = state;
-  const model = useMemo(() => computeDataCenterFromCampus(campus, params), [campus, params]);
+  const campusModel = useMemo(() => computeCampusModel(campus, params), [campus, params]);
+  const model = campusModel.runtime.dataCenter;
+  const selectionScope = useMemo(
+    () => resolveSelectionScope(campusModel, state.selection),
+    [campusModel, state.selection]
+  );
+  const selectionScopedRackCount = useMemo(() => {
+    if (selectionScope.type === "rack") {
+      return 1;
+    }
+
+    return selectionScope.hallIds.reduce(
+      (total, hallId) => total + (campusModel.specs.hallsById[hallId]?.rackCount ?? 0),
+      0
+    );
+  }, [campusModel, selectionScope]);
+  const totalHallCount = campusModel.halls.length;
+  const totalRackCount = campusModel.campus.rackCount;
+  const visibleHallCount =
+    state.ui.selectionDisplayMode === "isolate"
+      ? selectionScope.type === "rack"
+        ? 0
+        : selectionScope.hallIds.length
+      : totalHallCount;
+  const visibleRackCount =
+    state.ui.selectionDisplayMode === "isolate"
+      ? selectionScopedRackCount
+      : totalRackCount;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -882,10 +918,18 @@ export function Viewport() {
     hoveredIndex: null,
     selectedIndex: null,
   });
+  const campusModelRef = useRef(campusModel);
   const selectionRef = useRef(state.selection);
   const viewModeRef = useRef(state.viewMode);
   const scrollFlowEnabledRef = useRef(state.ui.scrollFlowEnabled);
   const cutawayEnabledRef = useRef(state.ui.cutawayEnabled);
+  const selectionDisplayModeRef = useRef(state.ui.selectionDisplayMode);
+  const hallSelectionObjectsRef = useRef<Map<string, THREE.Object3D[]>>(new Map());
+  const globalSelectionObjectsRef = useRef<THREE.Object3D[]>([]);
+  const rackBaseMatricesRef = useRef<THREE.Matrix4[]>([]);
+  const rackIdToHallIdRef = useRef<Map<string, string>>(new Map());
+  const selectionScopeStateRef = useRef<SelectionScopeState | null>(null);
+  const selectionScopeSignatureRef = useRef("");
   const resetCameraRef = useRef<() => void>(() => {});
   const cameraTourRef = useRef<CameraTourState>({
     layout: null,
@@ -1209,8 +1253,131 @@ export function Viewport() {
     resetCameraRef.current = resetCameraToCurrentSection;
 
     const applyVisualState = () => {
+      applyCutawayRef.current();
+
       const hovered = hoveredRef.current;
       const hoveredKey = hovered?.entityKey ?? null;
+      const resolvedScope = resolveSelectionScope(campusModelRef.current, selectionRef.current);
+      const selectionMode = selectionDisplayModeRef.current;
+      const activeHallIds = new Set(resolvedScope.hallIds);
+      const scopeSignature = `${selectionMode}|${resolvedScope.type}|${resolvedScope.selectionId}`;
+      const rackMesh = rackMeshRef.current;
+      const rackProfile = rackColorProfileRef.current;
+
+      const isHallInScope = (hallId: string | null) => {
+        if (resolvedScope.type === "campus") {
+          return true;
+        }
+        if (!hallId) {
+          return false;
+        }
+        return activeHallIds.has(hallId);
+      };
+
+      const isRackInScope = (rackId: string, hallId: string | null) => {
+        if (resolvedScope.type === "rack") {
+          return rackId === resolvedScope.rackId;
+        }
+        return isHallInScope(hallId);
+      };
+
+      const scaleObjectOpacity = (object: THREE.Object3D, multiplier: number) => {
+        object.traverse((entry) => {
+          const disposable = entry as DisposableObject3D;
+          const source = disposable.material;
+          if (!source) {
+            return;
+          }
+
+          const materials = Array.isArray(source) ? source : [source];
+          materials.forEach((material) => {
+            if (!("opacity" in material)) {
+              return;
+            }
+
+            const currentOpacity = (material as THREE.Material & { opacity: number }).opacity;
+            const targetOpacity = currentOpacity * multiplier;
+            (material as THREE.Material & { opacity: number }).opacity = targetOpacity;
+            material.transparent = targetOpacity < 0.999;
+            material.needsUpdate = true;
+          });
+        });
+      };
+
+      hallSelectionObjectsRef.current.forEach((objects, hallId) => {
+        const inScope = isHallInScope(hallId);
+        objects.forEach((object) => {
+          const baseVisible = object.visible;
+          if (selectionMode === "isolate") {
+            object.visible = baseVisible && resolvedScope.type !== "rack" && inScope;
+            return;
+          }
+
+          object.visible = baseVisible;
+          if (!baseVisible) {
+            return;
+          }
+
+          scaleObjectOpacity(object, inScope ? 1 : 0.14);
+        });
+      });
+
+      globalSelectionObjectsRef.current.forEach((object) => {
+        const baseVisible = object.visible;
+        if (selectionMode === "isolate") {
+          object.visible = baseVisible && resolvedScope.type === "campus";
+          return;
+        }
+
+        object.visible = baseVisible;
+        if (!baseVisible) {
+          return;
+        }
+
+        scaleObjectOpacity(object, resolvedScope.type === "campus" ? 1 : 0.12);
+      });
+
+      if (scopeSignature !== selectionScopeSignatureRef.current) {
+        if (rackMesh && rackProfile) {
+          const hiddenRackPosition = new THREE.Vector3(0, -9999, 0);
+          const hiddenRackScale = new THREE.Vector3(0.0001, 0.0001, 0.0001);
+          const hiddenRackQuaternion = new THREE.Quaternion();
+          const hiddenRackMatrix = new THREE.Matrix4().compose(
+            hiddenRackPosition,
+            hiddenRackQuaternion,
+            hiddenRackScale
+          );
+
+          for (let index = 0; index < rackMesh.count; index += 1) {
+            const rackId = rackInstanceIdsRef.current[index];
+            const hallId = rackIdToHallIdRef.current.get(rackId) ?? null;
+            const inScope = isRackInScope(rackId, hallId);
+            const baseMatrix = rackBaseMatricesRef.current[index];
+            rackMesh.setMatrixAt(
+              index,
+              selectionMode === "isolate" && !inScope ? hiddenRackMatrix : baseMatrix
+            );
+            rackMesh.setColorAt(index, inScope ? rackProfile.base : rackProfile.inactive);
+          }
+
+          rackMesh.instanceMatrix.needsUpdate = true;
+          if (rackMesh.instanceColor) {
+            rackMesh.instanceColor.needsUpdate = true;
+          }
+        }
+
+        selectionScopeStateRef.current = {
+          mode: selectionMode,
+          scopeType: resolvedScope.type,
+          activeHallIds,
+          rackId: resolvedScope.rackId,
+        };
+        selectionScopeSignatureRef.current = scopeSignature;
+        rackVisualStateRef.current = {
+          hoveredIndex: null,
+          selectedIndex: null,
+        };
+      }
 
       interactiveRef.current.forEach((entity) => {
         const material = entity.mesh.material;
@@ -1219,17 +1386,30 @@ export function Viewport() {
         }
 
         const hoveredMatch = hoveredKey === entity.key;
-        material.color.setHex(hoveredMatch ? entity.profile.hoverColor : entity.profile.baseColor);
+        const selectionMatch =
+          entity.type === "building"
+            ? resolvedScope.type === "campus"
+            : entity.type === "hall"
+              ? activeHallIds.has(entity.id)
+              : false;
+        const visibleOpacity = material.opacity;
+        material.color.setHex(
+          hoveredMatch
+            ? entity.profile.hoverColor
+            : selectionMatch
+              ? blendHex(entity.profile.baseColor, 0x22d3ee, entity.type === "building" ? 0.18 : 0.28)
+              : entity.profile.baseColor
+        );
         material.opacity = hoveredMatch
-          ? entity.profile.hoverOpacity
-          : entity.profile.baseOpacity;
+          ? Math.max(visibleOpacity, entity.profile.hoverOpacity)
+          : visibleOpacity;
         material.emissiveIntensity = hoveredMatch
-          ? entity.profile.hoverEmissiveIntensity
-          : entity.profile.baseEmissiveIntensity;
+          ? Math.max(entity.profile.hoverEmissiveIntensity, material.emissiveIntensity)
+          : selectionMatch
+            ? Math.max(entity.profile.baseEmissiveIntensity, 0.22)
+            : entity.profile.baseEmissiveIntensity;
       });
 
-      const rackMesh = rackMeshRef.current;
-      const rackProfile = rackColorProfileRef.current;
       if (!rackMesh || !rackProfile) {
         return;
       }
@@ -1240,6 +1420,7 @@ export function Viewport() {
         selection.type === "rack"
           ? rackIdToInstanceRef.current.get(selection.id) ?? null
           : null;
+      const scopeState = selectionScopeStateRef.current;
       const previousState = rackVisualStateRef.current;
       let rackColorsChanged = false;
 
@@ -1252,7 +1433,16 @@ export function Viewport() {
           return;
         }
 
-        rackMesh.setColorAt(index, rackProfile.base);
+        const rackId = rackInstanceIdsRef.current[index];
+        const hallId = rackIdToHallIdRef.current.get(rackId) ?? null;
+        const inScope = scopeState
+          ? scopeState.scopeType === "rack"
+            ? rackId === scopeState.rackId
+            : scopeState.scopeType === "campus"
+              ? true
+              : hallId !== null && scopeState.activeHallIds.has(hallId)
+          : true;
+        rackMesh.setColorAt(index, inScope ? rackProfile.base : rackProfile.inactive);
         rackColorsChanged = true;
       };
 
@@ -1525,6 +1715,11 @@ export function Viewport() {
       if (!hit) {
         return;
       }
+      if (hit.type === "building") {
+        select({ id: campusModelRef.current.campus.id, type: "campus" });
+        renderScene();
+        return;
+      }
       select({ id: hit.id, type: hit.type });
       renderScene();
     };
@@ -1617,8 +1812,14 @@ export function Viewport() {
       rackMeshRef.current = null;
       rackInstanceIdsRef.current = [];
       rackIdToInstanceRef.current.clear();
+      rackIdToHallIdRef.current.clear();
+      rackBaseMatricesRef.current = [];
       rackColorProfileRef.current = null;
       rackVisualStateRef.current = { hoveredIndex: null, selectedIndex: null };
+      hallSelectionObjectsRef.current.clear();
+      globalSelectionObjectsRef.current = [];
+      selectionScopeStateRef.current = null;
+      selectionScopeSignatureRef.current = "";
       entityByKeyRef.current.clear();
       objectToEntityKeyRef.current.clear();
       cameraTourRef.current = {
@@ -1711,6 +1912,8 @@ export function Viewport() {
       });
     };
     applyCutawayRef.current = applyCutawayMode;
+    const hallSelectionObjects = new Map<string, THREE.Object3D[]>();
+    const hallSelectionObjectIds = new Set<string>();
 
     // Parameter-driven visual mapping:
     // - criticalLoadMW: vertical scale and utility module sizing
@@ -1911,6 +2114,7 @@ export function Viewport() {
     const rackBaseColorHex = blendHex(0x334155, palette.hallEdge, lerp(0.24, 0.52, densityNorm));
     const rackProfile: RackColorProfile = {
       base: new THREE.Color(rackBaseColorHex),
+      inactive: new THREE.Color(blendHex(rackBaseColorHex, 0x0f172a, 0.58)),
       hover: new THREE.Color(blendHex(rackBaseColorHex, 0xffffff, 0.34)),
       selected: new THREE.Color(blendHex(rackBaseColorHex, 0x22d3ee, 0.54)),
     };
@@ -1936,6 +2140,8 @@ export function Viewport() {
 
     const rackInstanceIds: string[] = new Array(maxRackInstances);
     const rackIdToInstance = new Map<string, number>();
+    const rackIdToHallId = new Map<string, string>();
+    const rackBaseMatrices: THREE.Matrix4[] = new Array(maxRackInstances);
     let rackCursor = 0;
     const rackMatrix = new THREE.Matrix4();
     const rackPosition = new THREE.Vector3();
@@ -2038,6 +2244,8 @@ export function Viewport() {
 
           rackInstanceIds[rackCursor] = rackId;
           rackIdToInstance.set(rackId, rackCursor);
+          rackIdToHallId.set(rackId, hallId);
+          rackBaseMatrices[rackCursor] = rackMatrix.clone();
           rackCursor += 1;
           rackOrdinal += 1;
         }
@@ -2446,6 +2654,11 @@ export function Viewport() {
       };
 
       registerEntity(entity, [hallMesh]);
+      const uniqueHallObjects = Array.from(new Set(hallInteractionTargets));
+      hallSelectionObjects.set(hallId, uniqueHallObjects);
+      uniqueHallObjects.forEach((object) => {
+        hallSelectionObjectIds.add(object.uuid);
+      });
       hallAirTapPoints.push({ point: airTapPoint, entityKey: hallEntityKey });
       hallLiquidTapPoints.push({ point: liquidTapPoint, entityKey: hallEntityKey });
       hallPowerTapPoints.push({
@@ -2485,6 +2698,8 @@ export function Viewport() {
     }
     rackInstanceIdsRef.current = rackInstanceIds.slice(0, rackCursor);
     rackIdToInstanceRef.current = rackIdToInstance;
+    rackIdToHallIdRef.current = rackIdToHallId;
+    rackBaseMatricesRef.current = rackBaseMatrices.slice(0, rackCursor);
 
     const coolingPlantX = buildingWidth / 2 + supportBandX * 0.64;
     const airNetworkEnabled = params.coolingType === "Air-Cooled" || params.coolingType === "Hybrid";
@@ -2857,15 +3072,21 @@ export function Viewport() {
 
     const buildingProfile = createVisualProfile(shellBaseColor, shellOpacity, shellEmissive);
     const buildingEntity: InteractiveEntity = {
-      key: makeEntityKey("building", "B-01"),
+      key: makeEntityKey("building", campusModel.campus.id),
       mesh: buildingMesh,
       type: "building",
-      id: "B-01",
+      id: campusModel.campus.id,
       profile: buildingProfile,
     };
     registerEntity(buildingEntity, [buildingMesh]);
 
     disableDepthWriteForTransparentMaterials(layoutGroup);
+    hallSelectionObjectsRef.current = hallSelectionObjects;
+    globalSelectionObjectsRef.current = layoutGroup.children.filter(
+      (child) => child !== rackMesh && !hallSelectionObjectIds.has(child.uuid)
+    );
+    selectionScopeSignatureRef.current = "";
+    selectionScopeStateRef.current = null;
 
     interactiveRef.current = entities;
 
@@ -2931,6 +3152,10 @@ export function Viewport() {
   }, [model, params]);
 
   useEffect(() => {
+    campusModelRef.current = campusModel;
+  }, [campusModel]);
+
+  useEffect(() => {
     selectionRef.current = state.selection;
     applyVisualStateRef.current();
     renderSceneRef.current();
@@ -2952,9 +3177,16 @@ export function Viewport() {
 
   useEffect(() => {
     cutawayEnabledRef.current = state.ui.cutawayEnabled;
-    applyCutawayRef.current();
+    selectionScopeSignatureRef.current = "";
+    applyVisualStateRef.current();
     renderSceneRef.current();
   }, [state.ui.cutawayEnabled]);
+
+  useEffect(() => {
+    selectionDisplayModeRef.current = state.ui.selectionDisplayMode;
+    applyVisualStateRef.current();
+    renderSceneRef.current();
+  }, [state.ui.selectionDisplayMode]);
 
   useEffect(() => {
     if (state.ui.cameraResetNonce <= 0) {
@@ -2963,5 +3195,25 @@ export function Viewport() {
     resetCameraRef.current();
   }, [state.ui.cameraResetNonce]);
 
-  return <div ref={mountRef} className="viewport" aria-label="3D data center viewport" />;
+  return (
+    <div
+      ref={mountRef}
+      className="viewport"
+      aria-label="3D data center viewport"
+      data-selection-mode={state.ui.selectionDisplayMode}
+      data-selection-type={state.selection.type ?? "none"}
+      data-selection-scope-type={selectionScope.type}
+      data-selection-scope-id={selectionScope.selectionId}
+      data-selection-scope-zone-id={selectionScope.zoneId ?? ""}
+      data-selection-scope-hall-id={selectionScope.hallId ?? ""}
+      data-selection-scope-rack-id={selectionScope.rackId ?? ""}
+      data-selection-scope-hall-ids={selectionScope.hallIds.join(",")}
+      data-selection-scope-hall-count={selectionScope.hallIds.length}
+      data-selection-scope-rack-count={selectionScopedRackCount}
+      data-selection-visible-hall-count={visibleHallCount}
+      data-selection-visible-rack-count={visibleRackCount}
+      data-selection-total-hall-count={totalHallCount}
+      data-selection-total-rack-count={totalRackCount}
+    />
+  );
 }

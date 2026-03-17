@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { computeCampusModel, type HallAggregateSummary } from "@/model";
-import { useStore, type SelectionType } from "@/state";
+import { computeCampusModel, type HallAggregateSummary, type ZoneAggregateSummary } from "@/model";
+import { resolveSelectionScope } from "@/model/selectionScope";
+import { useStore } from "@/state";
 
 type InspectorView = "full" | "key";
-type SelectionProfileType = "building" | "hall" | "rack" | "none";
+type SelectionProfileType = "campus" | "zone" | "hall" | "rack";
 
 interface SelectionContext {
   profileType: SelectionProfileType;
   selectionName: string;
   caption: string;
-  assignedHallLabel: string;
+  scopeTargetLabel: string;
+  zone: ZoneAggregateSummary | null;
   hall: HallAggregateSummary | null;
   rackIndex: number | null;
   rackOrdinalInHall: number | null;
@@ -48,85 +50,67 @@ function parseTrailingNumber(value: string): number | null {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
-function findHallBySelection(
-  selectionId: string,
-  selectionType: SelectionType,
-  halls: HallAggregateSummary[],
-  hallsById: Record<string, HallAggregateSummary>
-) {
-  if (selectionType === "hall") {
-    const byId = hallsById[selectionId];
-    if (byId) {
-      return byId;
-    }
-
-    const hallIndex = parseTrailingNumber(selectionId);
-    if (hallIndex === null) {
-      return null;
-    }
-    return halls.find((hall) => hall.hallIndex === hallIndex) ?? null;
-  }
-
-  if (selectionType === "rack") {
-    const rackIndex = parseTrailingNumber(selectionId);
-    if (rackIndex === null) {
-      return null;
-    }
-
-    return (
-      halls.find(
-        (hall) => rackIndex >= hall.rackStartIndex && rackIndex <= hall.rackEndIndex
-      ) ?? null
-    );
-  }
-
-  return null;
-}
-
 function resolveSelectionContext(
-  selectionId: string,
-  selectionType: SelectionType,
-  halls: HallAggregateSummary[],
-  hallsById: Record<string, HallAggregateSummary>,
-  totalRacks: number,
-  rackCapacityBySpace: number,
-  totalFacilityMW: number,
-  nonITOverheadMW: number
+  campusModel: ReturnType<typeof computeCampusModel>,
+  selection: { id: string; type: "campus" | "zone" | "hall" | "rack" | null }
 ): SelectionContext {
-  const resolvedHall = findHallBySelection(selectionId, selectionType, halls, hallsById);
-  const rackIndex = selectionType === "rack" ? parseTrailingNumber(selectionId) : null;
+  const resolvedScope = resolveSelectionScope(campusModel, selection);
+  const resolvedZone = resolvedScope.zoneId ? campusModel.specs.zonesById[resolvedScope.zoneId] ?? null : null;
+  const resolvedHall = resolvedScope.hallId ? campusModel.specs.hallsById[resolvedScope.hallId] ?? null : null;
+  const rackIndex = resolvedScope.rackId ? parseTrailingNumber(resolvedScope.rackId) : null;
 
-  if (selectionType === "building") {
-    const headroom = Math.max(0, rackCapacityBySpace - totalRacks);
+  if (resolvedScope.type === "campus") {
+    const { campus } = campusModel;
+    const headroom = Math.max(0, campus.rackCapacityBySpace - campus.rackCount);
     const overheadShare =
-      totalFacilityMW > 0 ? formatPercent(nonITOverheadMW / totalFacilityMW) : "0.0%";
+      campus.facilityLoad.totalFacilityMW > 0
+        ? formatPercent(campus.facilityLoad.nonITOverheadMW / campus.facilityLoad.totalFacilityMW)
+        : "0.0%";
     return {
-      profileType: "building",
-      selectionName: "Building B-01",
-      caption: `${totalRacks.toLocaleString()} modeled racks • ${headroom.toLocaleString()} rack headroom • ${overheadShare} non-IT share`,
-      assignedHallLabel: "Facility",
+      profileType: "campus",
+      selectionName: campus.name,
+      caption: `${campus.zoneCount.toLocaleString()} zones • ${campus.hallCount.toLocaleString()} halls • ${headroom.toLocaleString()} rack headroom • ${overheadShare} non-IT share`,
+      scopeTargetLabel: "Entire campus",
+      zone: null,
       hall: null,
       rackIndex: null,
       rackOrdinalInHall: null,
     };
   }
 
-  if (selectionType === "hall" && resolvedHall) {
+  if (resolvedScope.type === "zone" && resolvedZone) {
+    const utilization = resolvedZone.rackCapacityBySpace > 0
+      ? formatPercent(resolvedZone.rackCount / resolvedZone.rackCapacityBySpace)
+      : "0.0%";
+    return {
+      profileType: "zone",
+      selectionName: resolvedZone.name,
+      caption: `${resolvedZone.hallCount.toLocaleString()} halls • ${resolvedZone.rackCount.toLocaleString()} racks • ${utilization} utilized`,
+      scopeTargetLabel: `${resolvedZone.name} scope`,
+      zone: resolvedZone,
+      hall: null,
+      rackIndex: null,
+      rackOrdinalInHall: null,
+    };
+  }
+
+  if (resolvedScope.type === "hall" && resolvedHall) {
     const utilization =
       resolvedHall.capacity > 0 ? formatPercent(resolvedHall.rackCount / resolvedHall.capacity) : "0.0%";
     return {
       profileType: "hall",
-      selectionName: `Hall ${resolvedHall.hallIndex}`,
+      selectionName: resolvedHall.name,
       caption: `${resolvedHall.rackCount.toLocaleString()} racks • ${utilization} utilized`,
-      assignedHallLabel: `Hall ${resolvedHall.hallIndex}`,
+      scopeTargetLabel: resolvedZone ? `${resolvedZone.name} / ${resolvedHall.name}` : resolvedHall.name,
+      zone: resolvedZone,
       hall: resolvedHall,
       rackIndex: null,
       rackOrdinalInHall: null,
     };
   }
 
-  if (selectionType === "rack") {
-    const hallLabel = resolvedHall ? `Hall ${resolvedHall.hallIndex}` : "Unassigned";
+  if (resolvedScope.type === "rack") {
+    const hallLabel = resolvedHall ? resolvedHall.name : "Unassigned";
     const rackPosition =
       resolvedHall && rackIndex !== null && resolvedHall.rackStartIndex > 0
         ? rackIndex - resolvedHall.rackStartIndex + 1
@@ -138,44 +122,25 @@ function resolveSelectionContext(
 
     return {
       profileType: "rack",
-      selectionName: `Rack ${selectionId}`,
+      selectionName: `Rack ${resolvedScope.rackId}`,
       caption:
         rackPosition && resolvedHall
           ? `${hallLabel} • Position ${rackPosition}/${resolvedHall.rackCount} • ${hallUtilization} utilized`
           : `${hallLabel} • Awaiting hall rack mapping`,
-      assignedHallLabel: hallLabel,
+      scopeTargetLabel: resolvedZone ? `${resolvedZone.name} / ${hallLabel}` : hallLabel,
+      zone: resolvedZone,
       hall: resolvedHall,
       rackIndex,
       rackOrdinalInHall: rackPosition,
     };
   }
 
-  if (selectionType === "hall") {
-    const hallIndex = parseTrailingNumber(selectionId);
-    return {
-      profileType: "hall",
-      selectionName: hallIndex !== null ? `Hall ${hallIndex}` : `Hall ${selectionId}`,
-      caption: `Hall metadata unavailable • verify hall binding`,
-      assignedHallLabel: hallIndex !== null ? `Hall ${hallIndex}` : "Unassigned",
-      hall: null,
-      rackIndex: null,
-      rackOrdinalInHall: null,
-    };
-  }
-
-  return {
-    profileType: "none",
-    selectionName: "No selection",
-    caption: `Click building, hall, or rack to inspect context-aware KPIs`,
-    assignedHallLabel: "Unassigned",
-    hall: null,
-    rackIndex: null,
-    rackOrdinalInHall: null,
-  };
+  return resolveSelectionContext(campusModel, { id: campusModel.campus.id, type: "campus" });
 }
 
 function buildProfileRows(
   selection: SelectionContext,
+  zoneCount: number,
   hallCount: number,
   totalRacks: number,
   rackCapacityBySpace: number,
@@ -183,20 +148,40 @@ function buildProfileRows(
   totalFacilityMW: number,
   nonITOverheadMW: number
 ): ProfileRow[] {
-  if (selection.profileType === "building") {
+  if (selection.profileType === "campus") {
     const headroom = Math.max(0, rackCapacityBySpace - totalRacks);
     const averageRacksPerHall = hallCount > 0 ? Math.round(totalRacks / hallCount) : 0;
     const overheadShare =
       totalFacilityMW > 0 ? formatPercent(nonITOverheadMW / totalFacilityMW) : "0.0%";
     return [
-      { label: "Type", value: "Building" },
-      { label: "Entity ID", value: "B-01" },
+      { label: "Type", value: "Campus" },
+      { label: "Campus Scope", value: selection.selectionName },
+      { label: "Zones", value: zoneCount.toLocaleString() },
       { label: "Modeled Rack Count", value: totalRacks.toLocaleString() },
       { label: "Space Capacity", value: `${rackCapacityBySpace.toLocaleString()} racks` },
       { label: "Power-Limited Racks", value: rackCountFromPower.toLocaleString() },
       { label: "Capacity Headroom", value: `${headroom.toLocaleString()} racks` },
       { label: "Avg Racks per Hall", value: averageRacksPerHall.toLocaleString() },
       { label: "Non-IT Overhead Share", value: overheadShare },
+    ];
+  }
+
+  if (selection.profileType === "zone" && selection.zone) {
+    const zone = selection.zone;
+    const dominantRedundancy = zone.profiles.redundancy.dominantProfile;
+    const dominantCooling = zone.profiles.coolingType.dominantProfile;
+    const dominantContainment = zone.profiles.containment.dominantProfile;
+    return [
+      { label: "Type", value: "Zone" },
+      { label: "Zone ID", value: zone.id },
+      { label: "Halls in Scope", value: zone.hallCount.toLocaleString() },
+      { label: "Racks in Scope", value: zone.rackCount.toLocaleString() },
+      { label: "Space Capacity", value: `${zone.rackCapacityBySpace.toLocaleString()} racks` },
+      { label: "Utilization", value: formatPercent(zone.utilization) },
+      { label: "Power-Limited Racks", value: zone.rackCountFromPower.toLocaleString() },
+      { label: "Dominant Redundancy", value: dominantRedundancy },
+      { label: "Dominant Cooling", value: dominantCooling },
+      { label: "Dominant Containment", value: dominantContainment },
     ];
   }
 
@@ -232,7 +217,7 @@ function buildProfileRows(
     return [
       { label: "Type", value: "Rack" },
       { label: "Rack ID", value: selection.selectionName.replace("Rack ", "") },
-      { label: "Assigned Hall", value: selection.assignedHallLabel },
+      { label: "Scope Target", value: selection.scopeTargetLabel },
       {
         label: "Rack Position",
         value:
@@ -263,15 +248,7 @@ function buildProfileRows(
     ];
   }
 
-  return [
-    { label: "Type", value: "None" },
-    { label: "Assigned Hall", value: "Unassigned" },
-    { label: "Modeled Rack Count", value: totalRacks.toLocaleString() },
-    { label: "Space Capacity", value: `${rackCapacityBySpace.toLocaleString()} racks` },
-    { label: "Capacity Headroom", value: `${Math.max(0, rackCapacityBySpace - totalRacks).toLocaleString()} racks` },
-    { label: "Facility Power", value: formatPower(totalFacilityMW) },
-    { label: "Non-IT Overhead", value: formatPower(nonITOverheadMW) },
-  ];
+  return [];
 }
 
 export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps = {}) {
@@ -303,24 +280,12 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
   const selectionContext = useMemo(
     () =>
       resolveSelectionContext(
-        selection.id,
-        selection.type,
-        campusModel.halls,
-        campusModel.specs.hallsById,
-        campusModel.campus.rackCount,
-        campusModel.campus.rackCapacityBySpace,
-        campusModel.campus.facilityLoad.totalFacilityMW,
-        campusModel.campus.facilityLoad.nonITOverheadMW
+        campusModel,
+        selection
       ),
     [
-      selection.id,
-      selection.type,
-      campusModel.halls,
-      campusModel.specs.hallsById,
-      campusModel.campus.rackCount,
-      campusModel.campus.rackCapacityBySpace,
-      campusModel.campus.facilityLoad.totalFacilityMW,
-      campusModel.campus.facilityLoad.nonITOverheadMW,
+      campusModel,
+      selection,
     ]
   );
 
@@ -328,6 +293,7 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
     () =>
       buildProfileRows(
         selectionContext,
+        campusModel.campus.zoneCount,
         campusModel.campus.hallCount,
         campusModel.campus.rackCount,
         campusModel.campus.rackCapacityBySpace,
@@ -337,6 +303,7 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
       ),
     [
       selectionContext,
+      campusModel.campus.zoneCount,
       campusModel.campus.hallCount,
       campusModel.campus.rackCount,
       campusModel.campus.rackCapacityBySpace,
@@ -436,8 +403,8 @@ export function SpecsPanel({ isMinimized, onMinimizedChange }: SpecsPanelProps =
             <span className="insight-value">{formatPower(overheadMW)}</span>
           </div>
           <div className="inspector-key-card">
-            <span className="insight-label">Assigned Hall</span>
-            <span className="insight-value">{selectionContext.assignedHallLabel}</span>
+            <span className="insight-label">Scope Target</span>
+            <span className="insight-value">{selectionContext.scopeTargetLabel}</span>
           </div>
         </div>
       </div>

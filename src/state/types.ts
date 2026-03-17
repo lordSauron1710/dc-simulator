@@ -18,6 +18,7 @@ import {
   type Rack,
   type EntityMetadata,
 } from "@/model";
+import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 /** Power redundancy topology per Uptime Institute tiers */
 export type Redundancy = "N" | "N+1" | "2N";
@@ -49,7 +50,7 @@ export interface Params {
   containment: ContainmentType;
 }
 
-export type SelectionType = "building" | "hall" | "rack" | null;
+export type SelectionType = "campus" | "zone" | "hall" | "rack" | null;
 
 export interface Selection {
   id: string;
@@ -63,6 +64,7 @@ export interface UIState {
   cameraResetNonce: number;
   scrollFlowEnabled: boolean;
   cutawayEnabled: boolean;
+  selectionDisplayMode: SelectionDisplayMode;
 }
 
 export interface AppState {
@@ -97,9 +99,11 @@ export const DEFAULT_PARAMS: Params = {
   containment: "Hot Aisle",
 };
 
+export const DEFAULT_CAMPUS: Campus = buildDefaultCampusFromParams(DEFAULT_PARAMS);
+
 export const DEFAULT_SELECTION: Selection = {
-  id: "R-104",
-  type: "rack",
+  id: DEFAULT_CAMPUS.id,
+  type: "campus",
 };
 
 export const DEFAULT_UI: UIState = {
@@ -107,9 +111,8 @@ export const DEFAULT_UI: UIState = {
   cameraResetNonce: 0,
   scrollFlowEnabled: false,
   cutawayEnabled: false,
+  selectionDisplayMode: "focus",
 };
-
-export const DEFAULT_CAMPUS: Campus = buildDefaultCampusFromParams(DEFAULT_PARAMS);
 
 export const DEFAULT_STATE: AppState = {
   params: DEFAULT_PARAMS,

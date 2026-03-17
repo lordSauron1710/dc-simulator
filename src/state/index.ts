@@ -15,6 +15,7 @@ export {
   setCampusAndParams,
   setSelection,
   setCutawayEnabled,
+  setSelectionDisplayMode,
   setScrollFlowEnabled,
   setViewMode,
   requestCameraReset,

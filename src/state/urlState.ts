@@ -8,6 +8,7 @@ import type {
   SelectionType,
   ViewMode,
 } from "./types";
+import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 const VALID_REDUNDANCY = new Set<Redundancy>(["N", "N+1", "2N"]);
 const VALID_COOLING = new Set<CoolingType>(["Air-Cooled", "DLC", "Hybrid"]);
@@ -18,7 +19,8 @@ const VALID_CONTAINMENT = new Set<ContainmentType>([
   "Full Enclosure",
 ]);
 const VALID_VIEW_MODE = new Set<ViewMode>(["orbit", "pan"]);
-const VALID_SELECTION_TYPE = new Set<SelectionType>(["building", "hall", "rack", null]);
+const VALID_SELECTION_TYPE = new Set<SelectionType>(["campus", "zone", "hall", "rack", null]);
+const VALID_SELECTION_DISPLAY_MODE = new Set<SelectionDisplayMode>(["focus", "isolate"]);
 
 interface ParamRange {
   min: number;
@@ -72,8 +74,9 @@ function parseSelection(raw: string | null): Selection | null {
     return null;
   }
 
-  const typeValue = raw.slice(0, separatorIndex) as Exclude<SelectionType, null>;
+  const rawTypeValue = raw.slice(0, separatorIndex);
   const idValue = raw.slice(separatorIndex + 1);
+  const typeValue = (rawTypeValue === "building" ? "campus" : rawTypeValue) as Exclude<SelectionType, null>;
   if (!VALID_SELECTION_TYPE.has(typeValue) || !idValue) {
     return null;
   }
@@ -148,6 +151,11 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
 
   const scrollFlow = parseBoolean(query.get("sf"));
   const cutawayEnabled = parseBoolean(query.get("cw"));
+  const selectionDisplayModeCandidate = query.get("sm") as SelectionDisplayMode | null;
+  const selectionDisplayMode =
+    selectionDisplayModeCandidate && VALID_SELECTION_DISPLAY_MODE.has(selectionDisplayModeCandidate)
+      ? selectionDisplayModeCandidate
+      : null;
 
   const nextState: Partial<AppState> = {};
   if (Object.keys(paramsPatch).length > 0) {
@@ -159,10 +167,11 @@ export function parseStateFromSearch(search: string): Partial<AppState> | null {
   if (viewMode) {
     nextState.viewMode = viewMode;
   }
-  if (scrollFlow !== null || cutawayEnabled !== null) {
+  if (scrollFlow !== null || cutawayEnabled !== null || selectionDisplayMode !== null) {
     nextState.ui = {
       ...(scrollFlow !== null ? { scrollFlowEnabled: scrollFlow } : {}),
       ...(cutawayEnabled !== null ? { cutawayEnabled } : {}),
+      ...(selectionDisplayMode !== null ? { selectionDisplayMode } : {}),
     } as AppState["ui"];
   }
 
@@ -189,6 +198,7 @@ export function serializeStateToSearch(state: AppState): string {
   query.set("vm", state.viewMode);
   query.set("sf", state.ui.scrollFlowEnabled ? "1" : "0");
   query.set("cw", state.ui.cutawayEnabled ? "1" : "0");
+  query.set("sm", state.ui.selectionDisplayMode);
 
   return query.toString();
 }

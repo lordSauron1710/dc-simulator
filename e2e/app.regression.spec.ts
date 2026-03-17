@@ -28,6 +28,10 @@ async function openApp(page: Page, search = "") {
   await expect(page.getByLabel("3D data center viewport")).toBeVisible();
 }
 
+function viewport(page: Page) {
+  return page.getByLabel("3D data center viewport");
+}
+
 function authoringWorkspace(page: Page) {
   return page.getByRole("complementary", { name: "Authoring workspace" });
 }
@@ -169,11 +173,13 @@ test("persists control toggles and camera mode across reloads", async ({ page, p
   await openApp(page);
 
   await page.getByRole("button", { name: "Pan Mode" }).click();
+  await page.getByRole("button", { name: "Selection Isolate Mode" }).click();
   await page.getByRole("button", { name: /Scroll Flow: Off/i }).click();
   await page.getByRole("button", { name: /Cutaway Mode: Off/i }).click();
 
   await expectQueryParams(page, {
     vm: "pan",
+    sm: "isolate",
     sf: "1",
     cw: "1",
   });
@@ -181,6 +187,7 @@ test("persists control toggles and camera mode across reloads", async ({ page, p
   await page.reload();
 
   await expect(page.getByRole("button", { name: "Pan Mode" })).toHaveClass(/active/);
+  await expect(page.getByRole("button", { name: "Selection Isolate Mode" })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: /Scroll Flow: On/i })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: /Cutaway Mode: On/i })).toHaveClass(/active/);
 });
@@ -230,6 +237,49 @@ test("hydrates safely at extreme public input ranges", async ({ page, pageErrors
   await expect(page.getByRole("button", { name: /Scroll Flow: On/i })).toHaveClass(/active/);
   await expect(page.getByRole("button", { name: /Cutaway Mode: On/i })).toHaveClass(/active/);
   await expect(page.getByText("Configuration valid")).toBeVisible();
+});
+
+test("applies rack isolate and zone-to-campus scope transitions without leaking viewport scope", async ({ page, pageErrors }) => {
+  void pageErrors;
+
+  const rackSelectionSearch = new URLSearchParams({
+    sel: "rack:R-0001",
+    sm: "isolate",
+  }).toString();
+
+  await openApp(page, `?${rackSelectionSearch}`);
+
+  await expect(viewport(page)).toHaveAttribute("data-selection-type", "rack");
+  await expect(viewport(page)).toHaveAttribute("data-selection-mode", "isolate");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "rack");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", "1");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "0");
+  await expect(page.locator(".inspector-selection")).toContainText("R-0001");
+
+  await openApp(page);
+  await page.getByRole("button", { name: "Add Zone" }).click();
+
+  const secondZone = page.locator(".builder-zone-block").nth(1);
+  await secondZone.locator(".builder-node-main").click();
+  await page.getByRole("button", { name: "Selection Isolate Mode" }).click();
+
+  await expect(viewport(page)).toHaveAttribute("data-selection-type", "zone");
+  await expect(viewport(page)).toHaveAttribute("data-selection-mode", "isolate");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "zone");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-id", "Z-02");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-hall-ids", "H-03");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "1");
+  await expect(viewport(page)).toHaveAttribute("data-selection-total-hall-count", "3");
+  await expect(page.locator(".inspector-selection")).toContainText("Zone B");
+
+  await page.locator(".builder-node-campus .builder-node-main").click();
+
+  const totalRackCount = await viewport(page).getAttribute("data-selection-total-rack-count");
+
+  await expect(viewport(page)).toHaveAttribute("data-selection-type", "campus");
+  await expect(viewport(page)).toHaveAttribute("data-selection-scope-type", "campus");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-hall-count", "3");
+  await expect(viewport(page)).toHaveAttribute("data-selection-visible-rack-count", totalRackCount ?? "");
 });
 
 test("keeps mobile controls recoverable after the auto-minimize pass", async ({ page, pageErrors }) => {

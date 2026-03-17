@@ -30,7 +30,7 @@ export const DATA_CENTER_PRESETS: DataCenterPreset[] = [
       coolingType: "Air-Cooled",
       containment: "Hot Aisle",
     },
-    selection: { type: "building", id: "B-01" },
+    selection: { type: "campus", id: "C-01" },
   },
   {
     id: "hyperscale-cloud",

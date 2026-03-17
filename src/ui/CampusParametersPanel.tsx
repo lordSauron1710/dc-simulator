@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropdown } from "./Dropdown";
 import {
   applyCampusPropertyPatch,
@@ -9,13 +9,18 @@ import {
   reconcileCampus,
   validateCampus,
 } from "@/model";
-import type { Campus, CoolingType, ContainmentType, Hall, Params, Redundancy, Zone } from "@/state";
+import type { Campus, CoolingType, ContainmentType, Hall, Params, Redundancy, Selection, Zone } from "@/state";
 
 const REDUNDANCY_OPTIONS: Redundancy[] = ["N", "N+1", "2N"];
 const CONTAINMENT_OPTIONS: ContainmentType[] = ["None", "Hot Aisle", "Cold Aisle", "Full Enclosure"];
 const COOLING_OPTIONS: CoolingType[] = ["Air-Cooled", "DLC", "Hybrid"];
 
 type ScopeLevel = "campus" | "zone" | "hall";
+interface ParameterScopeSelection {
+  scopeLevel: ScopeLevel;
+  selectedZoneId: string | null;
+  selectedHallId: string | null;
+}
 
 export interface ParameterFocusRequest {
   zoneId: string | null;
@@ -26,6 +31,8 @@ export interface ParameterFocusRequest {
 interface CampusParametersPanelProps {
   campus: Campus;
   params: Params;
+  selection: Selection;
+  onSelectionChange?: (selection: Selection) => void;
   onCampusChange: (campus: Campus, params: Params) => void;
   focusRequest?: ParameterFocusRequest;
 }
@@ -55,6 +62,73 @@ function findHall(campus: Campus, hallId: string | null) {
   }
 
   return null;
+}
+
+function parseTrailingNumber(value: string): number | null {
+  const match = value.match(/\d+/);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function findHallByRackId(campus: Campus, rackId: string) {
+  const rackIndex = parseTrailingNumber(rackId);
+  if (rackIndex === null) {
+    return null;
+  }
+
+  for (const zone of campus.zones) {
+    const hall = zone.halls.find((entry) => rackIndex >= entry.rackStartIndex && rackIndex <= entry.rackEndIndex);
+    if (hall) {
+      return { zoneId: zone.id, hall };
+    }
+  }
+
+  return null;
+}
+
+function deriveParameterScopeFromSelection(campus: Campus, selection: Selection): ParameterScopeSelection {
+  if (selection.type === "zone") {
+    const zone = findZone(campus, selection.id);
+    if (zone) {
+      return {
+        scopeLevel: "zone" as const,
+        selectedZoneId: zone.id,
+        selectedHallId: zone.halls[0]?.id ?? null,
+      };
+    }
+  }
+
+  if (selection.type === "hall") {
+    const hallMatch = findHall(campus, selection.id);
+    if (hallMatch) {
+      return {
+        scopeLevel: "hall" as const,
+        selectedZoneId: hallMatch.zoneId,
+        selectedHallId: hallMatch.hall.id,
+      };
+    }
+  }
+
+  if (selection.type === "rack") {
+    const hallMatch = findHallByRackId(campus, selection.id);
+    if (hallMatch) {
+      return {
+        scopeLevel: "hall" as const,
+        selectedZoneId: hallMatch.zoneId,
+        selectedHallId: hallMatch.hall.id,
+      };
+    }
+  }
+
+  return {
+    scopeLevel: "campus" as const,
+    selectedZoneId: campus.zones[0]?.id ?? null,
+    selectedHallId: campus.zones[0]?.halls[0]?.id ?? null,
+  };
 }
 
 function resolveScopeHalls(campus: Campus, level: ScopeLevel, zoneId: string | null, hallId: string | null) {
@@ -103,10 +177,39 @@ function isHallProfileInheritedFromZone(hall: Hall, zone: Zone): boolean {
   );
 }
 
-export function CampusParametersPanel({ campus, params, onCampusChange, focusRequest }: CampusParametersPanelProps) {
+export function CampusParametersPanel({
+  campus,
+  params,
+  selection,
+  onSelectionChange,
+  onCampusChange,
+  focusRequest,
+}: CampusParametersPanelProps) {
   const [scopeLevel, setScopeLevel] = useState<ScopeLevel>("campus");
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(campus.zones[0]?.id ?? null);
   const [selectedHallId, setSelectedHallId] = useState<string | null>(campus.zones[0]?.halls[0]?.id ?? null);
+  const selectionSyncSourceRef = useRef<"external" | "internal">("external");
+  const applyScopeSelection = useCallback(
+    (
+      patch: Partial<ParameterScopeSelection>,
+      source: "external" | "internal" = "internal"
+    ) => {
+      selectionSyncSourceRef.current = source;
+      if (patch.scopeLevel !== undefined) {
+        const nextScopeLevel = patch.scopeLevel;
+        setScopeLevel((current) => (current === nextScopeLevel ? current : nextScopeLevel));
+      }
+      if (patch.selectedZoneId !== undefined) {
+        const nextZoneId = patch.selectedZoneId;
+        setSelectedZoneId((current) => (current === nextZoneId ? current : nextZoneId));
+      }
+      if (patch.selectedHallId !== undefined) {
+        const nextHallId = patch.selectedHallId;
+        setSelectedHallId((current) => (current === nextHallId ? current : nextHallId));
+      }
+    },
+    []
+  );
 
   const selectedZone = useMemo(() => findZone(campus, selectedZoneId), [campus, selectedZoneId]);
   const selectedHall = useMemo(
@@ -117,19 +220,18 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
   useEffect(() => {
     const zone = findZone(campus, selectedZoneId);
     if (!zone) {
-      setSelectedZoneId(null);
-      setSelectedHallId(null);
+      applyScopeSelection({ selectedZoneId: null, selectedHallId: null }, "external");
       return;
     }
 
     if (zone.id !== selectedZoneId) {
-      setSelectedZoneId(zone.id);
+      applyScopeSelection({ selectedZoneId: zone.id }, "external");
     }
 
     if (!zone.halls.some((hall) => hall.id === selectedHallId)) {
-      setSelectedHallId(zone.halls[0]?.id ?? null);
+      applyScopeSelection({ selectedHallId: zone.halls[0]?.id ?? null }, "external");
     }
-  }, [campus, selectedHallId, selectedZoneId]);
+  }, [applyScopeSelection, campus, selectedHallId, selectedZoneId]);
 
   useEffect(() => {
     if (!focusRequest || focusRequest.nonce === 0) {
@@ -139,9 +241,14 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
     if (focusRequest.hallId) {
       const hallMatch = findHall(campus, focusRequest.hallId);
       if (hallMatch) {
-        setScopeLevel("hall");
-        setSelectedZoneId(hallMatch.zoneId);
-        setSelectedHallId(hallMatch.hall.id);
+        applyScopeSelection(
+          {
+            scopeLevel: "hall",
+            selectedZoneId: hallMatch.zoneId,
+            selectedHallId: hallMatch.hall.id,
+          },
+          "external"
+        );
         return;
       }
     }
@@ -149,12 +256,22 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
     if (focusRequest.zoneId) {
       const zone = findZone(campus, focusRequest.zoneId);
       if (zone) {
-        setScopeLevel("zone");
-        setSelectedZoneId(zone.id);
-        setSelectedHallId(zone.halls[0]?.id ?? null);
+        applyScopeSelection(
+          {
+            scopeLevel: "zone",
+            selectedZoneId: zone.id,
+            selectedHallId: zone.halls[0]?.id ?? null,
+          },
+          "external"
+        );
       }
     }
-  }, [campus, focusRequest]);
+  }, [applyScopeSelection, campus, focusRequest]);
+
+  useEffect(() => {
+    const next = deriveParameterScopeFromSelection(campus, selection);
+    applyScopeSelection(next, "external");
+  }, [applyScopeSelection, campus, selection]);
 
   const scopeHalls = useMemo(
     () => resolveScopeHalls(campus, scopeLevel, selectedZoneId, selectedHallId),
@@ -171,6 +288,34 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
     () => (selectedZone && selectedHall ? isHallProfileInheritedFromZone(selectedHall, selectedZone) : null),
     [selectedHall, selectedZone]
   );
+  const synchronizedSelection = useMemo<Selection>(() => {
+    if (scopeLevel === "zone" && selectedZoneId) {
+      return { id: selectedZoneId, type: "zone" };
+    }
+
+    if (scopeLevel === "hall" && selectedHallId) {
+      return { id: selectedHallId, type: "hall" };
+    }
+
+    return { id: campus.id, type: "campus" };
+  }, [campus.id, scopeLevel, selectedHallId, selectedZoneId]);
+
+  useEffect(() => {
+    if (!onSelectionChange) {
+      return;
+    }
+
+    if (selectionSyncSourceRef.current !== "internal") {
+      return;
+    }
+
+    selectionSyncSourceRef.current = "external";
+    if (selection.type === synchronizedSelection.type && selection.id === synchronizedSelection.id) {
+      return;
+    }
+
+    onSelectionChange(synchronizedSelection);
+  }, [onSelectionChange, selection.id, selection.type, synchronizedSelection]);
   const scopeImpactLine = useMemo(() => {
     if (scopeLevel === "campus") {
       return `Next profile change will update ${scopeHalls.length.toLocaleString()} hall(s) (${scopeRackCount.toLocaleString()} racks) across campus and refresh defaults in ${campus.zones.length.toLocaleString()} zone(s).`;
@@ -255,14 +400,14 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
             options={["Campus", "Zone", "Data Hall"]}
             onChange={(value) => {
               if (value === "Campus") {
-                setScopeLevel("campus");
+                applyScopeSelection({ scopeLevel: "campus" });
                 return;
               }
               if (value === "Zone") {
-                setScopeLevel("zone");
+                applyScopeSelection({ scopeLevel: "zone" });
                 return;
               }
-              setScopeLevel("hall");
+              applyScopeSelection({ scopeLevel: "hall" });
             }}
           />
 
@@ -276,8 +421,10 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
                 if (!zone) {
                   return;
                 }
-                setSelectedZoneId(zone.id);
-                setSelectedHallId(zone.halls[0]?.id ?? null);
+                applyScopeSelection({
+                  selectedZoneId: zone.id,
+                  selectedHallId: zone.halls[0]?.id ?? null,
+                });
               }}
             />
           ) : null}
@@ -292,7 +439,7 @@ export function CampusParametersPanel({ campus, params, onCampusChange, focusReq
                 if (!hall) {
                   return;
                 }
-                setSelectedHallId(hall.id);
+                applyScopeSelection({ selectedHallId: hall.id });
               }}
             />
           ) : null}

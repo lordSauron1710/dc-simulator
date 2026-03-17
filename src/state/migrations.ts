@@ -1,5 +1,6 @@
 import { buildDefaultCampusFromParams } from "@/model";
 import type { AppState, Params } from "./types";
+import { sanitizeSelectionForCampus } from "@/model/selectionScope";
 
 /**
  * v0 -> v1 migration utility.
@@ -22,12 +23,12 @@ export function hydrateV1StateFromParsedState(
     ...(parsedState?.params ?? {}),
   };
 
-  return {
+  return sanitizeSelectionForCampus({
     ...baseState,
     ...(parsedState ?? {}),
     params: mergedParams,
     selection: parsedState?.selection ?? baseState.selection,
     ui: { ...baseState.ui, ...(parsedState?.ui ?? {}) },
     campus: parsedState?.campus ?? mapV0ParamsToDefaultCampus(mergedParams),
-  };
+  });
 }

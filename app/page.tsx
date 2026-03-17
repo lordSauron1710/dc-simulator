@@ -25,6 +25,7 @@ export default function SandboxPage() {
     setViewMode,
     setCutawayEnabled,
     setScrollFlowEnabled,
+    setSelectionDisplayMode,
     resetCamera,
     updateParams,
     updateCampusAndParams,
@@ -111,6 +112,7 @@ export default function SandboxPage() {
     state.viewMode,
     state.ui.scrollFlowEnabled,
     state.ui.cutawayEnabled,
+    state.ui.selectionDisplayMode,
   ]);
 
   useEffect(() => {
@@ -331,9 +333,12 @@ export default function SandboxPage() {
                       <CampusBuilderPanel
                         campus={state.campus}
                         params={state.params}
+                        selection={state.selection}
+                        onSelectionChange={select}
                         onCampusChange={updateCampusAndParams}
                         onOpenHallParameters={(zoneId, hallId) => {
                           setAuthoringTab("parameters");
+                          select({ id: hallId, type: "hall" });
                           setParameterFocusRequest({
                             zoneId,
                             hallId,
@@ -345,6 +350,8 @@ export default function SandboxPage() {
                       <CampusParametersPanel
                         campus={state.campus}
                         params={state.params}
+                        selection={state.selection}
+                        onSelectionChange={select}
                         onCampusChange={updateCampusAndParams}
                         focusRequest={parameterFocusRequest}
                       />
@@ -384,12 +391,14 @@ export default function SandboxPage() {
             viewMode={state.viewMode}
             onViewModeChange={setViewMode}
             scrollFlowEnabled={state.ui.scrollFlowEnabled}
-            onScrollFlowChange={setScrollFlowEnabled}
-            cutawayEnabled={state.ui.cutawayEnabled}
-            onCutawayChange={setCutawayEnabled}
-            onResetCamera={resetCamera}
-            isMinimized={controlsMinimized}
-            onMinimizedChange={setControlsMinimized}
+          onScrollFlowChange={setScrollFlowEnabled}
+          cutawayEnabled={state.ui.cutawayEnabled}
+          onCutawayChange={setCutawayEnabled}
+          selectionDisplayMode={state.ui.selectionDisplayMode}
+          onSelectionDisplayModeChange={setSelectionDisplayMode}
+          onResetCamera={resetCamera}
+          isMinimized={controlsMinimized}
+          onMinimizedChange={setControlsMinimized}
           />
         </div>
       </div>

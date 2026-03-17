@@ -3,6 +3,7 @@
  */
 
 import type { AppState, Campus, Params, Selection, ViewMode, UIState } from "./types";
+import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 export type StoreAction =
   | { type: "SET_PARAMS"; payload: Params }
@@ -14,6 +15,7 @@ export type StoreAction =
   | { type: "SET_VIEW_MODE"; payload: ViewMode }
   | { type: "SET_SCROLL_FLOW_ENABLED"; payload: boolean }
   | { type: "SET_CUTAWAY_ENABLED"; payload: boolean }
+  | { type: "SET_SELECTION_DISPLAY_MODE"; payload: SelectionDisplayMode }
   | { type: "SET_UI"; payload: Partial<UIState> }
   | { type: "TOGGLE_DRAWER" }
   | { type: "REQUEST_CAMERA_RESET" };
@@ -52,6 +54,10 @@ export function setScrollFlowEnabled(enabled: boolean): StoreAction {
 
 export function setCutawayEnabled(enabled: boolean): StoreAction {
   return { type: "SET_CUTAWAY_ENABLED", payload: enabled };
+}
+
+export function setSelectionDisplayMode(mode: SelectionDisplayMode): StoreAction {
+  return { type: "SET_SELECTION_DISPLAY_MODE", payload: mode };
 }
 
 export function setUI(payload: Partial<UIState>): StoreAction {

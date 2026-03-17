@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deriveParamsFromReconciledCampus,
   formatHallId,
@@ -10,13 +10,20 @@ import {
   validateCampus,
   type CampusValidationIssue,
 } from "@/model";
-import type { Campus, Hall, Params, Zone } from "@/state";
+import type { Campus, Hall, Params, Selection, Zone } from "@/state";
 
 type SelectionKind = "campus" | "zone" | "hall";
+type BuilderSelectionState = {
+  kind: SelectionKind;
+  zoneId: string | null;
+  hallId: string | null;
+};
 
 interface CampusBuilderPanelProps {
   campus: Campus;
   params: Params;
+  selection: Selection;
+  onSelectionChange?: (selection: Selection) => void;
   onCampusChange: (campus: Campus, params: Params) => void;
   onOpenHallParameters?: (zoneId: string, hallId: string) => void;
 }
@@ -48,6 +55,78 @@ function resolveHall(zone: Zone | null, hallId: string | null): Hall | null {
     return zone.halls[0] ?? null;
   }
   return zone.halls.find((hall) => hall.id === hallId) ?? zone.halls[0] ?? null;
+}
+
+function parseTrailingNumber(value: string): number | null {
+  const match = value.match(/\d+/);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function findHallByRackId(campus: Campus, rackId: string) {
+  const rackIndex = parseTrailingNumber(rackId);
+  if (rackIndex === null) {
+    return null;
+  }
+
+  for (const zone of campus.zones) {
+    const hall = zone.halls.find((entry) => rackIndex >= entry.rackStartIndex && rackIndex <= entry.rackEndIndex);
+    if (hall) {
+      return { zone, hall };
+    }
+  }
+
+  return null;
+}
+
+function deriveBuilderSelection(campus: Campus, selection: Selection): BuilderSelectionState {
+  const firstZone = campus.zones[0] ?? null;
+  const firstHall = firstZone?.halls[0] ?? null;
+
+  if (selection.type === "zone") {
+    const zone = resolveZone(campus, selection.id);
+    if (zone) {
+      return { kind: "zone", zoneId: zone.id, hallId: zone.halls[0]?.id ?? null };
+    }
+  }
+
+  if (selection.type === "hall") {
+    for (const zone of campus.zones) {
+      const hall = zone.halls.find((entry) => entry.id === selection.id);
+      if (hall) {
+        return { kind: "hall", zoneId: zone.id, hallId: hall.id };
+      }
+    }
+  }
+
+  if (selection.type === "rack") {
+    const match = findHallByRackId(campus, selection.id);
+    if (match) {
+      return { kind: "hall", zoneId: match.zone.id, hallId: match.hall.id };
+    }
+  }
+
+  return {
+    kind: "campus",
+    zoneId: firstZone?.id ?? null,
+    hallId: firstHall?.id ?? null,
+  };
+}
+
+function deriveGlobalSelection(campus: Campus, builderSelection: BuilderSelectionState): Selection {
+  if (builderSelection.kind === "zone" && builderSelection.zoneId) {
+    return { id: builderSelection.zoneId, type: "zone" };
+  }
+
+  if (builderSelection.kind === "hall" && builderSelection.hallId) {
+    return { id: builderSelection.hallId, type: "hall" };
+  }
+
+  return { id: campus.id, type: "campus" };
 }
 
 function replaceZone(campus: Campus, zoneId: string, nextZone: Zone): Campus {
@@ -90,16 +169,31 @@ function isHallProfileInheritedFromZone(hall: Hall, zone: Zone): boolean {
   );
 }
 
-export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallParameters }: CampusBuilderPanelProps) {
+export function CampusBuilderPanel({
+  campus,
+  params,
+  selection,
+  onSelectionChange,
+  onCampusChange,
+  onOpenHallParameters,
+}: CampusBuilderPanelProps) {
   const [draft, setDraft] = useState<Campus>(() => reconcileCampus(campus));
   const [issues, setIssues] = useState<CampusValidationIssue[]>(() => validateCampus(campus));
-  const [selection, setSelection] = useState<{ kind: SelectionKind; zoneId: string | null; hallId: string | null }>({
+  const [builderSelection, setBuilderSelection] = useState<BuilderSelectionState>({
     kind: "campus",
     zoneId: campus.zones[0]?.id ?? null,
     hallId: campus.zones[0]?.halls[0]?.id ?? null,
   });
+  const selectionSyncSourceRef = useRef<"external" | "internal">("external");
   const [expandedZones, setExpandedZones] = useState<Record<string, boolean>>({});
   const [zoneHallVisibility, setZoneHallVisibility] = useState<Record<string, number>>({});
+  const updateBuilderSelection = useCallback(
+    (next: React.SetStateAction<BuilderSelectionState>, source: "external" | "internal" = "internal") => {
+      selectionSyncSourceRef.current = source;
+      setBuilderSelection(next);
+    },
+    []
+  );
 
   useEffect(() => {
     const next = reconcileCampus(campus);
@@ -108,13 +202,27 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
   }, [campus]);
 
   useEffect(() => {
+    const next = deriveBuilderSelection(draft, selection);
+    updateBuilderSelection((current) => {
+      if (
+        current.kind === next.kind &&
+        current.zoneId === next.zoneId &&
+        current.hallId === next.hallId
+      ) {
+        return current;
+      }
+      return next;
+    }, "external");
+  }, [draft, selection, updateBuilderSelection]);
+
+  useEffect(() => {
     setExpandedZones((current) => {
       const next = { ...current };
       let changed = false;
 
       draft.zones.forEach((zone) => {
         if (next[zone.id] === undefined) {
-          next[zone.id] = zone.id === selection.zoneId || zone.halls.length <= HALL_PAGE_SIZE;
+          next[zone.id] = zone.id === builderSelection.zoneId || zone.halls.length <= HALL_PAGE_SIZE;
           changed = true;
         }
       });
@@ -159,21 +267,25 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
 
       return changed ? next : current;
     });
-  }, [draft.zones, selection.zoneId]);
+  }, [builderSelection.zoneId, draft.zones]);
 
-  const selectedZone = useMemo(() => resolveZone(draft, selection.zoneId), [draft, selection.zoneId]);
-  const selectedHall = useMemo(() => resolveHall(selectedZone, selection.hallId), [selectedZone, selection.hallId]);
+  const selectedZone = useMemo(() => resolveZone(draft, builderSelection.zoneId), [builderSelection.zoneId, draft]);
+  const selectedHall = useMemo(() => resolveHall(selectedZone, builderSelection.hallId), [builderSelection.hallId, selectedZone]);
 
   useEffect(() => {
     if (!selectedZone) {
-      setSelection((current) => ({ ...current, zoneId: null, hallId: null, kind: "campus" }));
+      updateBuilderSelection((current) => ({ ...current, zoneId: null, hallId: null, kind: "campus" }));
       return;
     }
 
-    if (!draft.zones.some((zone) => zone.id === selection.zoneId)) {
-      setSelection((current) => ({ ...current, zoneId: selectedZone.id, hallId: selectedZone.halls[0]?.id ?? null }));
+    if (!draft.zones.some((zone) => zone.id === builderSelection.zoneId)) {
+      updateBuilderSelection((current) => ({
+        ...current,
+        zoneId: selectedZone.id,
+        hallId: selectedZone.halls[0]?.id ?? null,
+      }));
     }
-  }, [draft.zones, selectedZone, selection.zoneId]);
+  }, [builderSelection.zoneId, draft.zones, selectedZone, updateBuilderSelection]);
 
   useEffect(() => {
     if (!selectedZone) {
@@ -181,14 +293,32 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
     }
 
     if (selectedZone.halls.length === 0) {
-      setSelection((current) => ({ ...current, hallId: null }));
+      updateBuilderSelection((current) => ({ ...current, hallId: null }));
       return;
     }
 
-    if (!selectedZone.halls.some((hall) => hall.id === selection.hallId)) {
-      setSelection((current) => ({ ...current, hallId: selectedZone.halls[0].id }));
+    if (!selectedZone.halls.some((hall) => hall.id === builderSelection.hallId)) {
+      updateBuilderSelection((current) => ({ ...current, hallId: selectedZone.halls[0].id }));
     }
-  }, [selectedZone, selection.hallId]);
+  }, [builderSelection.hallId, selectedZone, updateBuilderSelection]);
+
+  useEffect(() => {
+    if (!onSelectionChange) {
+      return;
+    }
+
+    if (selectionSyncSourceRef.current !== "internal") {
+      return;
+    }
+
+    const nextSelection = deriveGlobalSelection(draft, builderSelection);
+    selectionSyncSourceRef.current = "external";
+    if (selection.type === nextSelection.type && selection.id === nextSelection.id) {
+      return;
+    }
+
+    onSelectionChange(nextSelection);
+  }, [builderSelection, draft, onSelectionChange, selection.id, selection.type]);
 
   const totals = useMemo(() => {
     const halls = draft.zones.flatMap((zone) => zone.halls);
@@ -209,7 +339,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
   }, [selectedZone]);
 
   const selectionScope = useMemo(() => {
-    if (selection.kind === "hall" && selectedZone && selectedHall) {
+    if (builderSelection.kind === "hall" && selectedZone && selectedHall) {
       return {
         label: `${selectedZone.metadata.name || selectedZone.id} / ${selectedHall.metadata.name || selectedHall.id}`,
         guidance: "Hall edits update only this hall's structure. Use Rack Parameters for technical profile overrides.",
@@ -218,7 +348,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
       };
     }
 
-    if (selection.kind === "zone" && selectedZone) {
+    if (builderSelection.kind === "zone" && selectedZone) {
       return {
         label: selectedZone.metadata.name || selectedZone.id,
         guidance: "Zone rules set rack-count guardrails and defaults for every hall in this zone.",
@@ -233,10 +363,10 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
       halls: totals.halls,
       racks: totals.racks,
     };
-  }, [draft.metadata.name, selectedHall, selectedZone, selection.kind, totals.halls, totals.racks, zoneRackTotal]);
+  }, [builderSelection.kind, draft.metadata.name, selectedHall, selectedZone, totals.halls, totals.racks, zoneRackTotal]);
 
   const selectionIssues = useMemo(() => {
-    if (selection.kind === "campus") {
+    if (builderSelection.kind === "campus") {
       return issues;
     }
 
@@ -265,7 +395,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
       const path = issue.path.toLowerCase();
       return lookup.some((token) => path.includes(token));
     });
-  }, [issues, selection.kind, selectedHall, selectedZone]);
+  }, [builderSelection.kind, issues, selectedHall, selectedZone]);
 
   const commitDraft = useCallback(
     (next: Campus) => {
@@ -339,7 +469,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
     };
 
     commitDraft({ ...draft, zones: [...draft.zones, nextZone] });
-    setSelection({ kind: "zone", zoneId, hallId });
+    updateBuilderSelection({ kind: "zone", zoneId, hallId });
   };
 
   const removeZone = (zoneId: string) => {
@@ -382,7 +512,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
     };
 
     commitDraft(replaceZone(draft, zone.id, { ...zone, halls: [...zone.halls, hall] }));
-    setSelection({ kind: "hall", zoneId: zone.id, hallId });
+    updateBuilderSelection({ kind: "hall", zoneId: zone.id, hallId });
   };
 
   const removeHall = (zone: Zone, hallId: string) => {
@@ -465,11 +595,11 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
       </div>
 
       <div className="builder-tree">
-        <div className={`builder-node builder-node-campus ${selection.kind === "campus" ? "active" : ""}`}>
+        <div className={`builder-node builder-node-campus ${builderSelection.kind === "campus" ? "active" : ""}`}>
           <button
             type="button"
             className="builder-node-main"
-            onClick={() => setSelection((current) => ({ ...current, kind: "campus" }))}
+            onClick={() => updateBuilderSelection((current) => ({ ...current, kind: "campus" }))}
           >
             <span className="builder-node-title">Campus</span>
             <span className="builder-node-meta">{draft.metadata.name || "Untitled Campus"}</span>
@@ -478,13 +608,13 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
 
         {draft.zones.map((zone) => {
           const zoneRackTotal = zone.halls.reduce((sum, hall) => sum + hall.rackCount, 0);
-          const isZoneExpanded = expandedZones[zone.id] ?? (zone.id === selection.zoneId || zone.halls.length <= HALL_PAGE_SIZE);
+          const isZoneExpanded = expandedZones[zone.id] ?? (zone.id === builderSelection.zoneId || zone.halls.length <= HALL_PAGE_SIZE);
           const visibleLimit = Math.min(
             zone.halls.length,
             zoneHallVisibility[zone.id] ?? Math.min(HALL_PAGE_SIZE, zone.halls.length)
           );
-          const selectedHallForZone = selection.zoneId === zone.id
-            ? zone.halls.find((hall) => hall.id === selection.hallId) ?? null
+          const selectedHallForZone = builderSelection.zoneId === zone.id
+            ? zone.halls.find((hall) => hall.id === builderSelection.hallId) ?? null
             : null;
           const previewHalls = zone.halls.filter((hall, index) => index < HALL_PREVIEW_COUNT || hall.id === selectedHallForZone?.id);
           const previewHallIds = new Set(previewHalls.map((hall) => hall.id));
@@ -500,11 +630,11 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
 
           return (
             <div key={zone.id} className="builder-zone-block">
-              <div className={`builder-node builder-node-zone ${selection.zoneId === zone.id && selection.kind !== "hall" ? "active" : ""}`}>
+              <div className={`builder-node builder-node-zone ${builderSelection.zoneId === zone.id && builderSelection.kind !== "hall" ? "active" : ""}`}>
                 <button
                   type="button"
                   className="builder-node-main"
-                  onClick={() => setSelection({ kind: "zone", zoneId: zone.id, hallId: zone.halls[0]?.id ?? null })}
+                  onClick={() => updateBuilderSelection({ kind: "zone", zoneId: zone.id, hallId: zone.halls[0]?.id ?? null })}
                 >
                   <span className="builder-node-title">Zone</span>
                   <span className="builder-node-meta">{zone.metadata.name || zone.id} • {zone.halls.length} halls • {zoneRackTotal} racks</span>
@@ -558,11 +688,11 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
                   {visibleHalls.map((hall) => {
                     const inheritedFromZone = isHallProfileInheritedFromZone(hall, zone);
                     return (
-                      <div key={hall.id} className={`builder-hall-row ${selection.hallId === hall.id && selection.zoneId === zone.id ? "active" : ""}`}>
+                      <div key={hall.id} className={`builder-hall-row ${builderSelection.hallId === hall.id && builderSelection.zoneId === zone.id ? "active" : ""}`}>
                       <button
                         type="button"
                         className="builder-hall-select"
-                        onClick={() => setSelection({ kind: "hall", zoneId: zone.id, hallId: hall.id })}
+                        onClick={() => updateBuilderSelection({ kind: "hall", zoneId: zone.id, hallId: hall.id })}
                       >
                         <span className="builder-hall-select-name">{hall.metadata.name || hall.id}</span>
                         <span className={`builder-profile-badge ${inheritedFromZone ? "inherited" : "overridden"}`}>
@@ -637,8 +767,8 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
                     <button
                       type="button"
                       key={hall.id}
-                      className={`builder-hall-preview ${selection.hallId === hall.id && selection.zoneId === zone.id ? "active" : ""}`}
-                      onClick={() => setSelection({ kind: "hall", zoneId: zone.id, hallId: hall.id })}
+                      className={`builder-hall-preview ${builderSelection.hallId === hall.id && builderSelection.zoneId === zone.id ? "active" : ""}`}
+                      onClick={() => updateBuilderSelection({ kind: "hall", zoneId: zone.id, hallId: hall.id })}
                     >
                       <span className="builder-hall-preview-name">
                         <span>{hall.metadata.name || hall.id}</span>
@@ -678,7 +808,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
           </div>
         </div>
 
-        {selection.kind === "campus" ? (
+        {builderSelection.kind === "campus" ? (
           <>
             <label className="builder-field">
               <span>Campus Name</span>
@@ -697,7 +827,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
           </>
         ) : null}
 
-        {selection.kind === "zone" && selectedZone ? (
+        {builderSelection.kind === "zone" && selectedZone ? (
           <>
             <label className="builder-field">
               <span>Zone Name</span>
@@ -790,7 +920,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
           </>
         ) : null}
 
-        {selection.kind === "hall" && selectedZone && selectedHall ? (
+        {builderSelection.kind === "hall" && selectedZone && selectedHall ? (
           <>
             <label className="builder-field">
               <span>Data Hall Name</span>
@@ -848,7 +978,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
         </div>
         {issues.length > 0 ? (
           <>
-            {selection.kind !== "campus" ? (
+            {builderSelection.kind !== "campus" ? (
               <p className="builder-validation-scope">
                 {selectionIssues.length > 0
                   ? `${selectionIssues.length} issue(s) match this selection.`
@@ -856,7 +986,7 @@ export function CampusBuilderPanel({ campus, params, onCampusChange, onOpenHallP
               </p>
             ) : null}
             <ul className="builder-validation-list">
-              {(selection.kind === "campus" ? issues : selectionIssues.length > 0 ? selectionIssues : issues).slice(0, 6).map((issue) => (
+              {(builderSelection.kind === "campus" ? issues : selectionIssues.length > 0 ? selectionIssues : issues).slice(0, 6).map((issue) => (
               <li key={`${issue.path}-${issue.message}`}>
                 <strong>{issue.path}:</strong> {issue.message} {issue.recommendation}
               </li>

@@ -88,8 +88,8 @@ export function ExplorerTree({
         icon="🌐"
         hasChildren
         isExpanded
-        isActive={selection.type === "building"}
-        onClick={() => onSelect?.("B-01", "building")}
+        isActive={selection.type === "campus"}
+        onClick={() => onSelect?.(campusModel.explorer.campusId, "campus")}
       />
 
       {campusModel.explorer.zones.map((zone) => (
@@ -100,6 +100,8 @@ export function ExplorerTree({
             level={1}
             hasChildren={zone.halls.length > 0}
             isExpanded
+            isActive={selection.type === "zone" && activeId === zone.id}
+            onClick={() => onSelect?.(zone.id, "zone")}
           />
           {zone.halls.map((hall) => (
             <React.Fragment key={hall.id}>

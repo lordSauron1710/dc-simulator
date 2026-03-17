@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from "react";
 import { IconButton } from "./IconButton";
+import type { SelectionDisplayMode } from "@/model/selectionScope";
 
 export type ViewMode = "orbit" | "pan";
 
@@ -12,6 +13,8 @@ export interface BottomControlsProps {
   onScrollFlowChange: (enabled: boolean) => void;
   cutawayEnabled: boolean;
   onCutawayChange: (enabled: boolean) => void;
+  selectionDisplayMode: SelectionDisplayMode;
+  onSelectionDisplayModeChange: (mode: SelectionDisplayMode) => void;
   onResetCamera?: () => void;
   isMinimized?: boolean;
   onMinimizedChange?: (minimized: boolean) => void;
@@ -24,6 +27,8 @@ export function BottomControls({
   onScrollFlowChange,
   cutawayEnabled,
   onCutawayChange,
+  selectionDisplayMode,
+  onSelectionDisplayModeChange,
   onResetCamera,
   isMinimized,
   onMinimizedChange,
@@ -108,6 +113,28 @@ export function BottomControls({
       <IconButton title="Reset Camera" onClick={onResetCamera}>
         <svg viewBox="0 0 24 24">
           <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" />
+        </svg>
+      </IconButton>
+      <div className="controls-bottom-divider" aria-hidden="true" />
+      <IconButton
+        title="Selection Focus Mode"
+        isActive={selectionDisplayMode === "focus"}
+        onClick={() => onSelectionDisplayModeChange("focus")}
+      >
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3.2" />
+          <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+          <path d="m5 5 2.8 2.8M16.2 16.2 19 19M19 5l-2.8 2.8M7.8 16.2 5 19" />
+        </svg>
+      </IconButton>
+      <IconButton
+        title="Selection Isolate Mode"
+        isActive={selectionDisplayMode === "isolate"}
+        onClick={() => onSelectionDisplayModeChange("isolate")}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M4 4h6v6H4zM14 14h6v6h-6z" />
+          <path d="M14 4h6v6h-6zM4 14h6v6H4z" opacity="0.45" />
         </svg>
       </IconButton>
       <div className="controls-bottom-divider" aria-hidden="true" />

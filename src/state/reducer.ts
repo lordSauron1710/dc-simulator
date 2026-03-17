@@ -6,35 +6,36 @@ import type { AppState } from "./types";
 import type { StoreAction } from "./actions";
 import { DEFAULT_STATE } from "./types";
 import { hydrateV1StateFromParsedState, mapV0ParamsToDefaultCampus } from "./migrations";
+import { sanitizeSelectionForCampus } from "@/model/selectionScope";
 
 export function storeReducer(state: AppState, action: StoreAction): AppState {
   switch (action.type) {
     case "HYDRATE_FROM_URL":
       return hydrateV1StateFromParsedState(state, action.payload);
     case "SET_PARAMS":
-      return {
+      return sanitizeSelectionForCampus({
         ...state,
         params: action.payload,
         campus: mapV0ParamsToDefaultCampus(action.payload),
-      };
+      });
     case "PATCH_PARAMS": {
       const nextParams = { ...state.params, ...action.payload };
-      return {
+      return sanitizeSelectionForCampus({
         ...state,
         params: nextParams,
         campus: mapV0ParamsToDefaultCampus(nextParams),
-      };
+      });
     }
     case "SET_CAMPUS":
-      return { ...state, campus: action.payload };
+      return sanitizeSelectionForCampus({ ...state, campus: action.payload });
     case "SET_CAMPUS_AND_PARAMS":
-      return {
+      return sanitizeSelectionForCampus({
         ...state,
         campus: action.payload.campus,
         params: action.payload.params,
-      };
+      });
     case "SET_SELECTION":
-      return { ...state, selection: action.payload };
+      return sanitizeSelectionForCampus({ ...state, selection: action.payload });
     case "SET_VIEW_MODE":
       return { ...state, viewMode: action.payload };
     case "SET_SCROLL_FLOW_ENABLED":
@@ -46,6 +47,11 @@ export function storeReducer(state: AppState, action: StoreAction): AppState {
       return {
         ...state,
         ui: { ...state.ui, cutawayEnabled: action.payload },
+      };
+    case "SET_SELECTION_DISPLAY_MODE":
+      return {
+        ...state,
+        ui: { ...state.ui, selectionDisplayMode: action.payload },
       };
     case "SET_UI":
       return { ...state, ui: { ...state.ui, ...action.payload } };

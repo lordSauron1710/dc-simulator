@@ -28,8 +28,10 @@ describe("urlState", () => {
     };
 
     const search = serializeStateToSearch(state);
+    const query = new URLSearchParams(search);
     const parsed = parseStateFromSearch(search);
 
+    expect(query.get("sm")).toBe("focus");
     expect(parsed).toEqual({
       params: state.params,
       selection: state.selection,
@@ -37,6 +39,21 @@ describe("urlState", () => {
       ui: {
         scrollFlowEnabled: true,
         cutawayEnabled: true,
+        selectionDisplayMode: "focus",
+      },
+    });
+  });
+
+  it("parses legacy building selections and isolate mode from shared URLs", () => {
+    const parsed = parseStateFromSearch("sel=building:B-01&sm=isolate");
+
+    expect(parsed).toEqual({
+      selection: {
+        id: "B-01",
+        type: "campus",
+      },
+      ui: {
+        selectionDisplayMode: "isolate",
       },
     });
   });

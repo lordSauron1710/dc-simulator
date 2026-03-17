@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { deriveParamsFromCampus } from "@/model";
+import { deriveParamsFromCampus, reconcileCampus } from "@/model";
 import { createCampusFixture } from "@/test/fixtures/campusFixture";
-import { hydrateFromUrl, patchParams, setCampus, setCampusAndParams } from "./actions";
+import {
+  hydrateFromUrl,
+  patchParams,
+  setCampus,
+  setCampusAndParams,
+  setSelection,
+  setSelectionDisplayMode,
+} from "./actions";
 import { storeReducer } from "./reducer";
 import { DEFAULT_PARAMS, DEFAULT_STATE } from "./types";
 
@@ -77,5 +84,42 @@ describe("storeReducer campus/parameter consistency", () => {
     next.campus.zones[0].halls.forEach((hall) => {
       expect(hall.profile.rackDensityKW).toBe(11);
     });
+  });
+
+  it("SET_SELECTION falls back to the campus scope when the target is invalid", () => {
+    const customCampus = createCampusFixture();
+    const state = {
+      ...DEFAULT_STATE,
+      campus: customCampus,
+      params: deriveParamsFromCampus(customCampus, DEFAULT_PARAMS),
+    };
+
+    const next = storeReducer(state, setSelection({ id: "Z-99", type: "zone" }));
+
+    expect(next.selection).toEqual({ id: customCampus.id, type: "campus" });
+  });
+
+  it("SET_CAMPUS remaps stale selection when the selected zone is removed", () => {
+    const customCampus = createCampusFixture();
+    const state = {
+      ...DEFAULT_STATE,
+      campus: customCampus,
+      params: deriveParamsFromCampus(customCampus, DEFAULT_PARAMS),
+      selection: { id: "Z-02", type: "zone" as const },
+    };
+    const nextCampus = reconcileCampus({
+      ...customCampus,
+      zones: [customCampus.zones[0]],
+    });
+
+    const next = storeReducer(state, setCampus(nextCampus));
+
+    expect(next.selection).toEqual({ id: nextCampus.id, type: "campus" });
+  });
+
+  it("SET_SELECTION_DISPLAY_MODE updates the selection visibility mode", () => {
+    const next = storeReducer(DEFAULT_STATE, setSelectionDisplayMode("isolate"));
+
+    expect(next.ui.selectionDisplayMode).toBe("isolate");
   });
 });

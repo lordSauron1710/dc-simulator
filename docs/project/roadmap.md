@@ -343,6 +343,7 @@ Implement pure model logic to build the entire campus scene description:
 ---
 
 ## Prompt 19 — Selection scope logic (rack, zone, campus)
+<!-- EXECUTED -->
 
 **Prompt**  
 Implement strict selection-driven visibility behavior:

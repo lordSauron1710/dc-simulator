@@ -6,7 +6,7 @@ Treat security requirements as non-optional.
 
 ## Scope And Precedence
 
-- This file supplements [AGENTS.md](./AGENTS.md); it does not replace it.
+- This file supplements [AGENTS.md](../../AGENTS.md); it does not replace it.
 - These security rules should reinforce the app's core goal: a visually creative, deployable 3D data center sandbox.
 - Do not use this policy set to justify generic enterprise boilerplate that fights the repo's frontend-first architecture or product direction.
 - If a security control would materially affect UX, scene behavior, or deployability, implement the safest version that still fits the repo's stated goals and document the tradeoff.
@@ -66,4 +66,4 @@ Treat security requirements as non-optional.
 - Do not open a public issue for an unpatched security vulnerability.
 - Report privately to the repository owner or maintainers first.
 - Include reproduction steps, impacted files, and a short impact statement.
-- After remediation, document the lesson in `errors.md` if it affects engineering practice in this repo.
+- After remediation, document the lesson in [docs/project/errors.md](../project/errors.md) if it affects engineering practice in this repo.

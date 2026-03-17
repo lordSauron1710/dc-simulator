@@ -4,7 +4,7 @@ This file is the entrypoint for the repository security policy set.
 
 ## Precedence
 
-- [AGENTS.md](./AGENTS.md) remains the primary repo instruction file.
+- [AGENTS.md](../../AGENTS.md) remains the primary repo instruction file.
 - These security policy files are supplemental guardrails.
 - They must not override the app's core goal, visual direction, deployability constraints, or roadmap unless a direct security issue requires a safer implementation.
 - When there is tension, preserve the product goal and solve it in a secure way that still fits the repo architecture.

@@ -21,7 +21,7 @@ Use this workflow for security events affecting this repository, its deployments
 4. Verify.
    - Confirm the fix in code, config, and production behavior.
 5. Document.
-   - Record the root cause and lesson in `errors.md` when it should influence future engineering behavior.
+   - Record the root cause and lesson in [docs/project/errors.md](../project/errors.md) when it should influence future engineering behavior.
 
 ## Communication Rules
 

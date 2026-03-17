@@ -20,6 +20,6 @@
 
 ## Completed Improvements
 
-- Added repo-level security policy files: `SECURITY.md`, `AUTH.md`, `API.md`, `ACCESSIBILITY.md`, `DATABASE.md`, `DEPLOYMENT.md`, `ENV_VARIABLES.md`, `INCIDENT_RESPONSE.md`, and `POLICY_INDEX.md`.
+- Added repo policy files under `docs/policies/`: `SECURITY.md`, `AUTH.md`, `API.md`, `ACCESSIBILITY.md`, `DATABASE.md`, `DEPLOYMENT.md`, `ENV_VARIABLES.md`, `INCIDENT_RESPONSE.md`, and `POLICY_INDEX.md`.
 - Added `.env.example` to make future configuration changes explicit and reviewable.
 - Updated `README.md` so the security policy set is discoverable.

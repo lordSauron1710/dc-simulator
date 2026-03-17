@@ -52,6 +52,7 @@ Use this stack as the default. If you introduce a new dependency or pattern, doc
 - Types first: model params, selection, and store state should be typed; avoid loose objects.
 - Prefer pure functions in `src/model/` for computations; keep side effects in React components or store actions.
 - Prefer small, focused components and files. Co-locate only when it improves readability.
+- Follow the repo security policy set as supplemental guidance. Use it to implement secure versions of the intended product behaviour, not to override the product goal or frontend-first architecture.
 
 **Deployment**
 
@@ -93,6 +94,33 @@ The app must remain deployable to Vercel, Netlify, or Cloud Run. Design and arch
 
 ---
 
+## Security policy workflow
+
+`AGENTS.md` is the primary instruction file for this repo. The security policy Markdown files are supplemental and must be followed in a way that preserves the app's core goal, visual direction, and deployability constraints.
+
+**Read for every change**
+
+- Read [POLICY_INDEX.md](POLICY_INDEX.md) as the entrypoint to the policy set.
+- Follow [SECURITY.md](SECURITY.md) for repo-wide security rules.
+- Follow [ACCESSIBILITY.md](ACCESSIBILITY.md) for UI and interaction changes.
+- Follow [ENV_VARIABLES.md](ENV_VARIABLES.md) and [DEPLOYMENT.md](DEPLOYMENT.md) when configuration, external services, or hosting assumptions change.
+
+**Read when introducing new surface area**
+
+- Read [AUTH.md](AUTH.md) before adding login, sessions, protected views, roles, or admin behaviour.
+- Read [API.md](API.md) before adding `app/api/**`, `pages/api/**`, Server Actions, or any network-facing handler.
+- Read [DATABASE.md](DATABASE.md) before adding persistence, a database, or BaaS integration.
+- Read [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) when handling suspected credential exposure or another security event.
+
+**Required follow-through**
+
+- If a PR adds auth, APIs, persistence, environment variables, or deployment behaviour, update the relevant policy files in the same PR.
+- Keep `.env.example` and `README.md` in sync with new configuration requirements.
+- Run `npx secure-repo audit` before shipping security-sensitive changes.
+- If dependency changes affect security posture, run `npm audit` and document any accepted risk.
+
+---
+
 ## Key files
 
 | File | Purpose |
@@ -100,6 +128,16 @@ The app must remain deployable to Vercel, Netlify, or Cloud Run. Design and arch
 | [roadmap.md](roadmap.md) | Development prompts for the v0 MVP. Execute prompts in order; update status tags as you work. |
 | [README.md](README.md) | Project overview, setup, and run instructions. Keep it accurate. |
 | [errors.md](errors.md) | Log of errors: symptom, root cause, fix, and one-line lesson. Use it to avoid repeating mistakes. |
+| [POLICY_INDEX.md](POLICY_INDEX.md) | Entry point for the repo security policy set and the precedence model for those docs. |
+| [SECURITY.md](SECURITY.md) | Repo-wide security baseline, merge checks, and rules for widening the attack surface. |
+| [ACCESSIBILITY.md](ACCESSIBILITY.md) | Accessibility requirements for the UI shell, controls, and scene-adjacent interactions. |
+| [AUTH.md](AUTH.md) | Rules for introducing authentication, sessions, roles, and protected behaviour. |
+| [API.md](API.md) | Rules for adding network-facing endpoints, handlers, or Server Actions. |
+| [DATABASE.md](DATABASE.md) | Rules for adding persistence, database access, or BaaS integrations. |
+| [ENV_VARIABLES.md](ENV_VARIABLES.md) | Rules for introducing, documenting, and exposing environment variables safely. |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment and security baseline for Vercel, Netlify, and Cloud Run. |
+| [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) | Containment and recovery workflow for security incidents. |
+| [security_best_practices_report.md](security_best_practices_report.md) | Current security audit summary and outstanding follow-up items. |
 
 ---
 
@@ -175,7 +213,8 @@ Implement a global store with:
 - **Mindset:** Senior dev — simple, typed, user- and deployment-aware.
 - **Stack:** Next.js 14, TypeScript (strict), React, CSS variables, Three.js (planned).
 - **Deployability:** Design for Vercel, Netlify, and Cloud Run — static/hybrid build, env-based config, no host-specific assumptions.
-- **Key files:** roadmap.md (prompts), README.md (docs), errors.md (lessons).
+- **Security docs:** Follow POLICY_INDEX.md and the relevant policy Markdown files without overriding the repo's product goal or architecture.
+- **Key files:** roadmap.md (prompts), README.md (docs), errors.md (lessons), and the security policy set.
 - **Errors:** Check errors.md when stuck; add entries when fixing bugs; re-read relevant sections before changing critical flows.
 - **Roadmap:** Use status tags (`IN PROGRESS` / `EXECUTED`) in roadmap.md and keep prompt text unchanged.
 - **Documentation:** After major UI changes, add screenshots to `docs/screenshots/` and update README. After file structure changes, update README.

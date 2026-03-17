@@ -73,7 +73,15 @@ dc-simulator/
 │       ├── SpecsPanel.tsx
 │       └── TreeItem.tsx
 ├── AGENTS.md
+├── API.md
+├── AUTH.md
+├── ACCESSIBILITY.md
+├── DATABASE.md
+├── DEPLOYMENT.md
+├── ENV_VARIABLES.md
 ├── errors.md
+├── INCIDENT_RESPONSE.md
+├── POLICY_INDEX.md
 ├── roadmap.md
 └── README.md
 ```
@@ -111,6 +119,20 @@ npm run dev
 - `roadmap.md`: ordered implementation prompts and execution status tags.
 - `errors.md`: known issues, fixes, and lessons learned by category.
 - `AGENTS.md`: contributor/agent rules for architecture, style, and deployability.
+- `POLICY_INDEX.md`: security policy entrypoint for humans and AI agents.
+- `SECURITY.md`: core repo security rules and merge checks.
+- `AUTH.md`, `API.md`, `DATABASE.md`: requirements for introducing server trust boundaries.
+- `ENV_VARIABLES.md`, `.env.example`, `DEPLOYMENT.md`: rules for configuration and production rollout.
+- `INCIDENT_RESPONSE.md`: containment and recovery workflow for security events.
+- `security_best_practices_report.md`: current security audit summary and remaining follow-up item.
+
+## Security baseline
+
+- ShipSecure-style policy files are committed at the repo root and should be updated with any new security-sensitive surface area.
+- The security policy set is supplementary to `AGENTS.md`; it is meant to constrain unsafe implementation choices, not to change the app's product goal or repo conventions.
+- The current app has no auth layer, no API routes, no database, and no required environment variables.
+- If a PR adds auth, APIs, persistence, or secrets, update the relevant policy docs in the same change.
+- Run `npx secure-repo audit` before shipping security-sensitive changes.
 
 ## Roadmap status
 

@@ -105,6 +105,24 @@ npm install
 npm run dev
 ```
 
+## Testing
+
+```bash
+# Install the Chromium browser once for Playwright
+npm run test:e2e:install
+
+# Unit and pure-model coverage
+npm test
+
+# Production-like browser regression run
+npm run test:e2e
+
+# Full release gate
+npm run test:all
+```
+
+`npm run test:all` is the repo's "all tests passed" command. It runs the Vitest suite, validates a production build, then launches the built app and executes the browser regression suite against the core UI flows and high-range scenarios.
+
 ## Data center parameters
 
 | Category | Parameter | Unit | Description |

@@ -52,6 +52,8 @@ Use this stack as the default. If you introduce a new dependency or pattern, doc
 - Types first: model params, selection, and store state should be typed; avoid loose objects.
 - Prefer pure functions in `src/model/` for computations; keep side effects in React components or store actions.
 - Prefer small, focused components and files. Co-locate only when it improves readability.
+- When working in Codex, use any required Codex skill whose documented scope matches the task. Treat applicable skills as mandatory workflow, not optional guidance; read the skill instructions first and follow them unless the skill is unavailable or clearly inapplicable.
+- Follow the repo security policy set as supplemental guidance. Use it to implement secure versions of the intended product behaviour, not to override the product goal or frontend-first architecture.
 
 **Deployment**
 
@@ -93,13 +95,50 @@ The app must remain deployable to Vercel, Netlify, or Cloud Run. Design and arch
 
 ---
 
+## Security policy workflow
+
+`AGENTS.md` is the primary instruction file for this repo. The security policy Markdown files are supplemental and must be followed in a way that preserves the app's core goal, visual direction, and deployability constraints.
+
+**Read for every change**
+
+- Read [POLICY_INDEX.md](docs/policies/POLICY_INDEX.md) as the entrypoint to the policy set.
+- Follow [SECURITY.md](docs/policies/SECURITY.md) for repo-wide security rules.
+- Follow [ACCESSIBILITY.md](docs/policies/ACCESSIBILITY.md) for UI and interaction changes.
+- Follow [ENV_VARIABLES.md](docs/policies/ENV_VARIABLES.md) and [DEPLOYMENT.md](docs/policies/DEPLOYMENT.md) when configuration, external services, or hosting assumptions change.
+
+**Read when introducing new surface area**
+
+- Read [AUTH.md](docs/policies/AUTH.md) before adding login, sessions, protected views, roles, or admin behaviour.
+- Read [API.md](docs/policies/API.md) before adding `app/api/**`, `pages/api/**`, Server Actions, or any network-facing handler.
+- Read [DATABASE.md](docs/policies/DATABASE.md) before adding persistence, a database, or BaaS integration.
+- Read [INCIDENT_RESPONSE.md](docs/policies/INCIDENT_RESPONSE.md) when handling suspected credential exposure or another security event.
+
+**Required follow-through**
+
+- If a PR adds auth, APIs, persistence, environment variables, or deployment behaviour, update the relevant policy files in the same PR.
+- Keep `.env.example` and `README.md` in sync with new configuration requirements.
+- Run `npx secure-repo audit` before shipping security-sensitive changes.
+- If dependency changes affect security posture, run `npm audit` and document any accepted risk.
+
+---
+
 ## Key files
 
 | File | Purpose |
 |------|--------|
-| [roadmap.md](roadmap.md) | Development prompts for the v0 MVP. Execute prompts in order; update status tags as you work. |
+| [roadmap.md](docs/project/roadmap.md) | Development prompts for the v0 MVP. Execute prompts in order; update status tags as you work. |
 | [README.md](README.md) | Project overview, setup, and run instructions. Keep it accurate. |
-| [errors.md](errors.md) | Log of errors: symptom, root cause, fix, and one-line lesson. Use it to avoid repeating mistakes. |
+| [errors.md](docs/project/errors.md) | Log of errors: symptom, root cause, fix, and one-line lesson. Use it to avoid repeating mistakes. |
+| [POLICY_INDEX.md](docs/policies/POLICY_INDEX.md) | Entry point for the repo security policy set and the precedence model for those docs. |
+| [SECURITY.md](docs/policies/SECURITY.md) | Repo-wide security baseline, merge checks, and rules for widening the attack surface. |
+| [ACCESSIBILITY.md](docs/policies/ACCESSIBILITY.md) | Accessibility requirements for the UI shell, controls, and scene-adjacent interactions. |
+| [AUTH.md](docs/policies/AUTH.md) | Rules for introducing authentication, sessions, roles, and protected behaviour. |
+| [API.md](docs/policies/API.md) | Rules for adding network-facing endpoints, handlers, or Server Actions. |
+| [DATABASE.md](docs/policies/DATABASE.md) | Rules for adding persistence, database access, or BaaS integrations. |
+| [ENV_VARIABLES.md](docs/policies/ENV_VARIABLES.md) | Rules for introducing, documenting, and exposing environment variables safely. |
+| [DEPLOYMENT.md](docs/policies/DEPLOYMENT.md) | Deployment and security baseline for Vercel, Netlify, and Cloud Run. |
+| [INCIDENT_RESPONSE.md](docs/policies/INCIDENT_RESPONSE.md) | Containment and recovery workflow for security incidents. |
+| [security_best_practices_report.md](docs/reports/security_best_practices_report.md) | Current security audit summary and outstanding follow-up items. |
 
 ---
 
@@ -122,27 +161,27 @@ The README is the public face of this project. Keep it current:
 
 ## Learning from errors
 
-Use **errors.md** to learn from past mistakes and avoid repeating them.
+Use **docs/project/errors.md** to learn from past mistakes and avoid repeating them.
 
 - **Before changing 3D / scene or real-time behaviour**  
-  Re-read any "Scene, rendering & connection timing" (or equivalent) section in errors.md so lifecycle and timing stay correct (e.g. init before render, cleanup on unmount).
+  Re-read any "Scene, rendering & connection timing" (or equivalent) section in `docs/project/errors.md` so lifecycle and timing stay correct (e.g. init before render, cleanup on unmount).
 
 - **Before adding or changing environment or data assumptions**  
   Re-read any "Environment, types & encoding" (or equivalent) section so behaviour stays robust (e.g. types, units, serialisation).
 
 - **When you fix a bug**  
-  Add a short entry to errors.md: symptom, root cause, fix, and a one-line lesson. Use existing categories or add one. Update the categorisation summary table if it helps.
+  Add a short entry to `docs/project/errors.md`: symptom, root cause, fix, and a one-line lesson. Use existing categories or add one. Update the categorisation summary table if it helps.
 
 - **When you hit an error**  
-  Check errors.md first; it may describe a known bug, assumption, or API misuse and how it was fixed.
+  Check `docs/project/errors.md` first; it may describe a known bug, assumption, or API misuse and how it was fixed.
 
-If errors.md is missing, create it with a short intro and a categorisation table (e.g. Scene & rendering, State & params, Environment & types, Build & deploy).
+If `docs/project/errors.md` is missing, create it with a short intro and a categorisation table (e.g. Scene & rendering, State & params, Environment & types, Build & deploy).
 
 ---
 
-## Prompt execution tracking (roadmap.md)
+## Prompt execution tracking (docs/project/roadmap.md)
 
-When working through [roadmap.md](roadmap.md):
+When working through [roadmap.md](docs/project/roadmap.md):
 
 1. **Status tags**  
    Add a status line at the top of each prompt block, immediately after the `## Prompt NN — ...` header:
@@ -175,7 +214,8 @@ Implement a global store with:
 - **Mindset:** Senior dev — simple, typed, user- and deployment-aware.
 - **Stack:** Next.js 14, TypeScript (strict), React, CSS variables, Three.js (planned).
 - **Deployability:** Design for Vercel, Netlify, and Cloud Run — static/hybrid build, env-based config, no host-specific assumptions.
-- **Key files:** roadmap.md (prompts), README.md (docs), errors.md (lessons).
-- **Errors:** Check errors.md when stuck; add entries when fixing bugs; re-read relevant sections before changing critical flows.
-- **Roadmap:** Use status tags (`IN PROGRESS` / `EXECUTED`) in roadmap.md and keep prompt text unchanged.
+- **Security docs:** Follow `docs/policies/POLICY_INDEX.md` and the relevant policy Markdown files without overriding the repo's product goal or architecture.
+- **Key files:** `docs/project/roadmap.md` (prompts), `README.md` (docs), `docs/project/errors.md` (lessons), and the security policy set.
+- **Errors:** Check `docs/project/errors.md` when stuck; add entries when fixing bugs; re-read relevant sections before changing critical flows.
+- **Roadmap:** Use status tags (`IN PROGRESS` / `EXECUTED`) in `docs/project/roadmap.md` and keep prompt text unchanged.
 - **Documentation:** After major UI changes, add screenshots to `docs/screenshots/` and update README. After file structure changes, update README.

@@ -8,6 +8,8 @@ node_modules/
 out/
 build/
 dist/
+output/playwright/
+playwright-report/
 
 # Debug
 npm-debug.log*

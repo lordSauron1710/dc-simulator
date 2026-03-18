@@ -7,9 +7,9 @@ Live deployment: [dc-simulator-omega.vercel.app](https://dc-simulator-omega.verc
 [![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](https://www.typescriptlang.org/)
-[![Roadmap](https://img.shields.io/badge/Roadmap-01--18%20executed-blue)](docs/project/roadmap.md)
+[![Roadmap](https://img.shields.io/badge/Roadmap-01--19%20executed-blue)](docs/project/roadmap.md)
 
-![DC Simulator UI (Campus Builder)](docs/screenshots/ui-campus-builder-v1.png)
+![DC Simulator UI](docs/screenshots/dc-simulator-ui.png)
 
 ## What it does
 
@@ -58,20 +58,16 @@ dc-simulator/
 │   ├── reports/
 │   │   └── security_best_practices_report.md
 │   └── screenshots/
-├── ACCESSIBILITY.md
-├── API.md
-├── AGENTS.md
-├── AUTH.md
-├── DATABASE.md
-├── DEPLOYMENT.md
-├── ENV_VARIABLES.md
-├── INCIDENT_RESPONSE.md
-├── SECURITY.md
+├── e2e/
+│   └── app.regression.spec.ts
 ├── src/
 │   ├── model/
 │   │   ├── campus.ts
 │   │   ├── campusBuilder.ts
-│   │   └── dataCenter.ts
+│   │   ├── campusBuilder.test.ts
+│   │   ├── dataCenter.ts
+│   │   ├── selectionScope.ts
+│   │   └── selectionScope.test.ts
 │   ├── scene/
 │   │   └── Viewport.tsx
 │   ├── state/
@@ -79,10 +75,13 @@ dc-simulator/
 │   │   ├── index.ts
 │   │   ├── migrations.ts
 │   │   ├── presets.ts
+│   │   ├── presets.test.ts
 │   │   ├── reducer.ts
+│   │   ├── reducer.test.ts
 │   │   ├── store.tsx
 │   │   ├── types.ts
-│   │   └── urlState.ts
+│   │   ├── urlState.ts
+│   │   └── urlState.test.ts
 │   └── ui/
 │       ├── BottomControls.tsx
 │       ├── CampusBuilderPanel.tsx
@@ -96,6 +95,7 @@ dc-simulator/
 │       ├── Slider.tsx
 │       ├── SpecsPanel.tsx
 │       └── TreeItem.tsx
+├── AGENTS.md
 └── README.md
 ```
 
@@ -151,7 +151,6 @@ npm run test:all
 - `docs/project/errors.md`: known issues, fixes, and lessons learned by category.
 - `AGENTS.md`: contributor/agent rules for architecture, style, and deployability.
 - `docs/policies/POLICY_INDEX.md`: security policy entrypoint for humans and AI agents.
-- Root policy stub files (`SECURITY.md`, `AUTH.md`, `API.md`, and related companions): compatibility shims for `secure-repo`; the canonical policy content stays under `docs/policies/`.
 - `docs/policies/SECURITY.md`: core repo security rules and merge checks.
 - `docs/policies/AUTH.md`, `docs/policies/API.md`, `docs/policies/DATABASE.md`: requirements for introducing server trust boundaries.
 - `docs/policies/ENV_VARIABLES.md`, `.env.example`, `docs/policies/DEPLOYMENT.md`: rules for configuration and production rollout.
@@ -160,8 +159,7 @@ npm run test:all
 
 ## Security baseline
 
-- ShipSecure-style policy files live under `docs/policies/` and should be updated with any new security-sensitive surface area.
-- Root-level policy stub files exist only for audit-tool compatibility; `docs/policies/` remains the source of truth.
+- Policy files live under `docs/policies/` and should be updated with any new security-sensitive surface area.
 - The security policy set is supplementary to `AGENTS.md`; it is meant to constrain unsafe implementation choices, not to change the app's product goal or repo conventions.
 - The current app has no auth layer, no API routes, no database, and no required environment variables.
 - Production responses include baseline browser hardening headers via [`next.config.js`](next.config.js): `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, and a conservative CSP with `frame-ancestors 'none'`.
@@ -171,8 +169,8 @@ npm run test:all
 
 ## Roadmap status
 
-- Executed: Prompts 01-18.
-- Pending/untagged: Prompts 19-31.
+- Executed: Prompts 01-19.
+- Pending/untagged: Prompts 20-31.
 
 ## License
 
